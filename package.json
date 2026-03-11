@@ -3,7 +3,6 @@
   "displayName": "Antigravity Token Monitor",
   "description": "Monitor Antigravity session token usage and review session activity in a dashboard.",
   "version": "0.0.1",
-  "private": true,
   "publisher": "ddarkr",
   "icon": "icon.png",
   "license": "MIT",
