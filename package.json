@@ -1,0 +1,118 @@
+{
+  "name": "antigravity-token-monitor",
+  "displayName": "Antigravity Token Monitor",
+  "description": "Monitor Antigravity session token usage and review session activity in a dashboard.",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:antigravity-token-monitor.openDashboard",
+    "onCommand:antigravity-token-monitor.refreshNow",
+    "onCommand:antigravity-token-monitor.exportNow",
+    "onCommand:antigravity-token-monitor.resetCache"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravity-token-monitor.openDashboard",
+        "title": "Antigravity Token Monitor: Open Dashboard",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "antigravity-token-monitor.refreshNow",
+        "title": "Antigravity Token Monitor: Refresh Now",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "antigravity-token-monitor.exportNow",
+        "title": "Antigravity Token Monitor: Export Sessions Now",
+        "icon": "$(export)"
+      },
+      {
+        "command": "antigravity-token-monitor.resetCache",
+        "title": "Antigravity Token Monitor: Reset Cache (캐시 초기화)",
+        "icon": "$(trash)"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Token Monitor",
+      "properties": {
+        "antigravity-token-monitor.sessionRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Override the Antigravity session root. Leave empty to use ~/.gemini/antigravity."
+        },
+        "antigravity-token-monitor.pollIntervalMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "description": "How often the extension rescans sessions and recalculates usage."
+        },
+        "antigravity-token-monitor.historyLimit": {
+          "type": "number",
+          "default": 120,
+          "minimum": 10,
+          "description": "How many snapshots to keep per session."
+        },
+        "antigravity-token-monitor.maxFileBytes": {
+          "type": "number",
+          "default": 524288,
+          "minimum": 16384,
+          "description": "Maximum file size to read during token estimation heuristics."
+        },
+        "antigravity-token-monitor.useRpcExport": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, try exporting Antigravity conversations through the internal RPC into local JSONL artifacts before parsing token usage."
+        },
+        "antigravity-token-monitor.exportStepsJsonl": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, also export conversation steps into steps.jsonl. This is optional and mainly useful for debugging or transcript inspection."
+        },
+        "antigravity-token-monitor.rpcExportIntervalMs": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 10000,
+          "description": "How often the extension exports Antigravity sessions into background JSONL artifacts when RPC export is enabled."
+        },
+        "antigravity-token-monitor.rpcTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "description": "Timeout for internal Antigravity RPC requests used during JSONL artifact export."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run compile && npx @vscode/vsce package --no-dependencies",
+    "typecheck": "tsc --noEmit",
+    "typecheck:webview": "svelte-check --tsconfig ./tsconfig.webview.json",
+    "test:webview": "vitest run"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.7.1",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@testing-library/svelte": "^5.3.1",
+    "@types/node": "^20.17.30",
+    "@types/vscode": "^1.96.0",
+    "esbuild": "^0.25.0",
+    "esbuild-svelte": "^0.9.4",
+    "jsdom": "^28.1.0",
+    "svelte": "^5.53.9",
+    "svelte-check": "^4.4.5",
+    "typescript": "^5.8.2",
+    "vitest": "^4.0.18"
+  }
+}
