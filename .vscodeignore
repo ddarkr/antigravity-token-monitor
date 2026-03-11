@@ -27,6 +27,8 @@ tsconfig*.json
 esbuild.js
 vitest.config.ts
 package-lock.json
+icon.svg
+Frame.png
 *.map
 dist/**
 !dist/**/*.js

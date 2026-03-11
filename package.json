@@ -4,7 +4,17 @@
   "description": "Monitor Antigravity session token usage and review session activity in a dashboard.",
   "version": "0.0.1",
   "private": true,
+  "publisher": "ddarkr",
+  "icon": "icon.png",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ddarkr/antigravity-token-monitor"
+  },
+  "bugs": {
+    "url": "https://github.com/ddarkr/antigravity-token-monitor/issues"
+  },
+  "homepage": "https://github.com/ddarkr/antigravity-token-monitor#readme",
   "engines": {
     "vscode": "^1.96.0"
   },
