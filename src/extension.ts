@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const panel = new DashboardPanel(
     context.extensionUri,
-    () => { void service.refreshNow(); }
+    () => { void service.exportNow({ force: false, refreshAfter: true }); }
   );
   const statusBar = new TokenStatusBar();
 
@@ -40,7 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.refreshNow`, async () => {
-    void service.refreshNow();
+    void service.exportNow({ force: false, refreshAfter: true });
     panel.show(service.getDashboardState());
   }));
 
