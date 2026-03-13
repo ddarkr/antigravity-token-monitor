@@ -9,82 +9,126 @@ type TrajectorySummary = {
 };
 
 export class AntigravityRpcClient {
-  private readonly locator = new ProcessLocator();
+  private readonly locator: ProcessLocator;
   private connectionInfo: RpcConnectionInfo | null = null;
+  private connections: RpcConnectionInfo[] | null = null;
+  private readonly sessionConnections = new Map<string, RpcConnectionInfo>();
 
-  constructor(private readonly config: MonitorConfig) {}
+  constructor(
+    private readonly config: MonitorConfig,
+    private readonly log?: (message: string) => void
+  ) {
+    this.locator = new ProcessLocator(log);
+  }
 
   async listTrajectories(): Promise<TrajectorySummary[]> {
-    const response = await this.request('GetAllCascadeTrajectories', {});
-    const rawSummaries = response.trajectorySummaries;
-    const items: unknown[] = Array.isArray(rawSummaries)
-      ? rawSummaries
-      : rawSummaries && typeof rawSummaries === 'object'
-        // value를 먼저 spread 후 key(cascadeId)로 덮어써서 Map key가 항상 우선되도록 수정
-        ? Object.entries(rawSummaries).map(([key, value]) => ({ ...(value as object), cascadeId: key }))
-        : Array.isArray(response.cascadeTrajectories)
-          ? response.cascadeTrajectories
-          : [];
+    const connections = await this.ensureConnections();
+    const merged = new Map<string, { summary: TrajectorySummary; connection: RpcConnectionInfo }>();
 
-    return items
-      .map((item) => normalizeSummary(item))
-      .filter((item): item is TrajectorySummary => item !== null);
+    for (const connection of connections) {
+      const response = await this.request('GetAllCascadeTrajectories', {}, connection);
+      const rawSummaries = response.trajectorySummaries;
+      const items: unknown[] = Array.isArray(rawSummaries)
+        ? rawSummaries
+        : rawSummaries && typeof rawSummaries === 'object'
+          ? Object.entries(rawSummaries).map(([key, value]) => ({ ...(value as object), cascadeId: key }))
+          : Array.isArray(response.cascadeTrajectories)
+            ? response.cascadeTrajectories
+            : [];
+
+      const summaries = items
+        .map((item) => normalizeSummary(item))
+        .filter((item): item is TrajectorySummary => item !== null);
+
+      this.log?.(`AntigravityRpcClient: pid=${connection.pid} port=${connection.port} listTrajectories returned ${summaries.length} item(s).`);
+
+      for (const summary of summaries) {
+        const existing = merged.get(summary.sessionId);
+        if (!existing || isBetterSummary(summary, existing.summary)) {
+          merged.set(summary.sessionId, { summary, connection });
+        }
+      }
+    }
+
+    this.sessionConnections.clear();
+    for (const [sessionId, value] of merged.entries()) {
+      this.sessionConnections.set(sessionId, value.connection);
+    }
+
+    const summaries = [...merged.values()].map((value) => value.summary);
+    this.log?.(`AntigravityRpcClient: merged trajectory list returned ${summaries.length} unique item(s) across ${connections.length} connection(s).`);
+    return summaries;
   }
 
   async getTrajectorySteps(sessionId: string): Promise<unknown[]> {
-    try {
-      const result = await this.request('GetCascadeTrajectory', { cascadeId: sessionId });
-      if (Array.isArray(result.trajectory?.steps)) {
-        return result.trajectory.steps;
+    for (const connection of await this.getConnectionsForSession(sessionId)) {
+      try {
+        const result = await this.request('GetCascadeTrajectory', { cascadeId: sessionId }, connection);
+        if (Array.isArray(result.trajectory?.steps)) {
+          return result.trajectory.steps;
+        }
+      } catch {
       }
-    } catch {
+
+      try {
+        const fallback = await this.request('GetCascadeTrajectorySteps', {
+          cascadeId: sessionId,
+          startIndex: 0,
+          endIndex: 10000
+        }, connection);
+        return Array.isArray(fallback.steps)
+          ? fallback.steps
+          : Array.isArray(fallback.step)
+            ? fallback.step
+            : [];
+      } catch {
+      }
     }
 
-    const fallback = await this.request('GetCascadeTrajectorySteps', {
-      cascadeId: sessionId,
-      startIndex: 0,
-      endIndex: 10000
-    });
-    return Array.isArray(fallback.steps)
-      ? fallback.steps
-      : Array.isArray(fallback.step)
-        ? fallback.step
-        : [];
+    return [];
   }
 
   async getTrajectoryMetadata(sessionId: string): Promise<unknown[]> {
-    try {
-      const result = await this.request('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: sessionId });
-      if (Array.isArray(result.generatorMetadata)) {
-        return result.generatorMetadata;
+    for (const connection of await this.getConnectionsForSession(sessionId)) {
+      try {
+        const result = await this.request('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: sessionId }, connection);
+        if (Array.isArray(result.generatorMetadata)) {
+          this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata for ${sessionId} returned ${result.generatorMetadata.length} row(s).`);
+          return result.generatorMetadata;
+        }
+        this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata for ${sessionId} returned non-array payload.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata fetch failed for ${sessionId}: ${message}`);
       }
-      return [];
-    } catch {
-      return [];
     }
+
+    return [];
   }
 
   async flush(): Promise<void> {
-    try {
-      await this.request('SendAllQueuedMessages', {});
-    } catch {
+    for (const connection of await this.ensureConnections()) {
+      try {
+        await this.request('SendAllQueuedMessages', {}, connection);
+      } catch {
+      }
     }
   }
 
-  private async request(method: string, body: unknown): Promise<any> {
-    const connection = await this.ensureConnection();
+  private async request(method: string, body: unknown, connection?: RpcConnectionInfo): Promise<any> {
+    const resolvedConnection = connection ?? await this.ensureConnection();
     const requestBody = JSON.stringify(body);
     return new Promise((resolve, reject) => {
       const request = https.request({
         hostname: '127.0.0.1',
-        port: connection.port,
+        port: resolvedConnection.port,
         path: `/exa.language_server_pb.LanguageServerService/${method}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(requestBody),
           'Connect-Protocol-Version': '1',
-          'X-Codeium-Csrf-Token': connection.csrfToken
+          'X-Codeium-Csrf-Token': resolvedConnection.csrfToken
         },
         rejectUnauthorized: false,
         timeout: this.config.rpcTimeoutMs
@@ -116,23 +160,54 @@ export class AntigravityRpcClient {
   }
 
   private async ensureConnection(): Promise<RpcConnectionInfo> {
-    // 캐시된 연결이 있으면 재사용, 없으면 새로 탐지
-    // Note: 인스턴스는 export 사이클마다 새로 생성되므로 캐싱은 단일 사이클 내 재사용에만 적용됨
-    if (!this.connectionInfo) {
-      this.connectionInfo = await this.locator.detectConnection();
-    }
-
-    if (!this.connectionInfo) {
+    const connections = await this.ensureConnections();
+    const firstConnection = connections[0] ?? null;
+    if (!firstConnection) {
       throw new Error('Antigravity internal RPC is unavailable.');
     }
 
-    return this.connectionInfo;
+    this.connectionInfo = firstConnection;
+    return firstConnection;
+  }
+
+  private async ensureConnections(): Promise<RpcConnectionInfo[]> {
+    if (!this.connections) {
+      this.connections = await this.locator.detectConnections();
+      if (this.connections.length > 0) {
+        this.connectionInfo = this.connections[0];
+        this.log?.(`AntigravityRpcClient: connected to ${this.connections.length} RPC connection(s): ${this.connections.map((connection) => `pid=${connection.pid}:port=${connection.port}`).join(', ')}.`);
+      }
+    }
+
+    return this.connections;
+  }
+
+  private async getConnectionsForSession(sessionId: string): Promise<RpcConnectionInfo[]> {
+    const connections = await this.ensureConnections();
+    const preferred = this.sessionConnections.get(sessionId);
+    if (!preferred) {
+      return connections;
+    }
+
+    return [preferred, ...connections.filter((connection) => connection.pid !== preferred.pid || connection.port !== preferred.port)];
   }
 
   /** 캐시된 연결 정보를 초기화하여 다음 요청 시 재탐지하도록 강제 */
   resetConnection(): void {
     this.connectionInfo = null;
+    this.connections = null;
+    this.sessionConnections.clear();
   }
+}
+
+function isBetterSummary(next: TrajectorySummary, current: TrajectorySummary): boolean {
+  const nextModified = next.lastModifiedMs ?? 0;
+  const currentModified = current.lastModifiedMs ?? 0;
+  if (nextModified !== currentModified) {
+    return nextModified > currentModified;
+  }
+
+  return (next.stepCount ?? 0) > (current.stepCount ?? 0);
 }
 
 function normalizeSummary(input: unknown): TrajectorySummary | null {

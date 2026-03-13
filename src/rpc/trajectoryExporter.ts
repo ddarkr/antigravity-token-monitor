@@ -18,12 +18,12 @@ export class TrajectoryExporter {
     private readonly artifactStore: RpcArtifactStore,
     private readonly log?: (message: string) => void
   ) {
-    this.client = new AntigravityRpcClient(config);
+    this.client = new AntigravityRpcClient(config, log);
   }
 
   async exportChangedSessions(
     candidates: SessionScanCandidate[],
-    options?: { force?: boolean }
+    options?: { force?: boolean; selectiveForce?: boolean }
   ): Promise<{ manifests: Map<string, RpcArtifactManifest>; exportedCount: number }> {
     const manifests = new Map<string, RpcArtifactManifest>();
     if (!this.config.useRpcExport) {
@@ -63,7 +63,20 @@ export class TrajectoryExporter {
       }
 
       const previous = await this.artifactStore.loadManifest(candidate.sessionId);
-      if (!shouldExport(summary, previous, options?.force === true)) {
+      const force = options?.force === true;
+      const selectiveForce = options?.selectiveForce === true;
+      const shouldForceThisSession = force || (
+        selectiveForce && (
+          summaryById.has(candidate.sessionId)
+          || !previous?.artifactHash
+          || (previous?.failureCount ?? 0) > 0
+        )
+      );
+      const exportNeeded = shouldExport(summary, previous, shouldForceThisSession);
+      this.log?.(
+        `TrajectoryExporter: session=${candidate.sessionId} exportNeeded=${exportNeeded} force=${force} selectiveForce=${selectiveForce} forcedSession=${shouldForceThisSession} previousModified=${previous?.serverLastModifiedMs ?? 'none'} nextModified=${summary.lastModifiedMs ?? 'none'} previousStepCount=${previous?.stepCount ?? 'none'} nextStepCount=${summary.stepCount ?? 'none'}.`
+      );
+      if (!exportNeeded) {
         if (previous) {
           manifests.set(candidate.sessionId, previous);
         }
@@ -73,6 +86,9 @@ export class TrajectoryExporter {
       try {
         const steps = await this.client.getTrajectorySteps(candidate.sessionId);
         const metadata = await this.client.getTrajectoryMetadata(candidate.sessionId);
+        this.log?.(
+          `TrajectoryExporter: session=${candidate.sessionId} fetched steps=${steps.length} metadata=${metadata.length}.`
+        );
         const next = await this.artifactStore.writeSessionArtifacts({
           sessionId: candidate.sessionId,
           serverLastModifiedMs: summary.lastModifiedMs,
@@ -84,6 +100,8 @@ export class TrajectoryExporter {
         exportedCount += 1;
       } catch (error) {
         await this.artifactStore.recordFailure(candidate.sessionId, error);
+        const message = error instanceof Error ? error.message : String(error);
+        this.log?.(`TrajectoryExporter: session=${candidate.sessionId} export failure recorded: ${message}`);
         console.warn(`[antigravity-token-monitor] Failed to export RPC artifacts for ${candidate.sessionId}:`, error);
       }
     }

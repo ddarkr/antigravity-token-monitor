@@ -6,6 +6,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 export type RpcConnectionInfo = {
+  pid: number;
   port: number;
   csrfToken: string;
 };
@@ -18,20 +19,42 @@ type ProcessCandidate = {
 };
 
 export class ProcessLocator {
+  constructor(private readonly log?: (message: string) => void) {}
+
   async detectConnection(): Promise<RpcConnectionInfo | null> {
+    const connections = await this.detectConnections();
+    return connections[0] ?? null;
+  }
+
+  async detectConnections(): Promise<RpcConnectionInfo[]> {
     // 최대 2회 시도 — 첫 번째 실패 시 프로세스를 다시 탐지
     for (let attempt = 0; attempt < 2; attempt++) {
-      const processInfo = await this.detectProcess();
-      if (!processInfo) {
-        return null;
+      const processInfos = await this.detectProcesses();
+      if (processInfos.length === 0) {
+        this.log?.(`ProcessLocator: no Antigravity process detected (attempt ${attempt + 1}/2).`);
+        return [];
       }
 
-      const ports = await this.getListeningPorts(processInfo.pid);
-      for (const port of ports) {
-        const isReady = await testPort(port, processInfo.csrfToken);
-        if (isReady) {
-          return { port, csrfToken: processInfo.csrfToken };
+      const connections: RpcConnectionInfo[] = [];
+      for (const processInfo of processInfos) {
+        this.log?.(
+          `ProcessLocator: selected pid=${processInfo.pid} ppid=${processInfo.ppid} declaredPort=${processInfo.extensionPort || 'unknown'} (attempt ${attempt + 1}/2).`
+        );
+        const ports = await this.getListeningPorts(processInfo.pid);
+        this.log?.(`ProcessLocator: pid=${processInfo.pid} listening ports=[${ports.join(', ') || 'none'}].`);
+        for (const port of ports) {
+          const isReady = await testPort(port, processInfo.csrfToken);
+          this.log?.(`ProcessLocator: heartbeat ${isReady ? 'ok' : 'failed'} for pid=${processInfo.pid} port=${port}.`);
+          if (isReady) {
+            connections.push({ pid: processInfo.pid, port, csrfToken: processInfo.csrfToken });
+            break;
+          }
         }
+      }
+
+      if (connections.length > 0) {
+        this.log?.(`ProcessLocator: resolved ${connections.length} RPC connection(s).`);
+        return connections;
       }
 
       // 포트 탐지 실패 시 잠깐 대기 후 재탐지
@@ -40,24 +63,26 @@ export class ProcessLocator {
       }
     }
 
-    return null;
+    return [];
   }
 
-  private async detectProcess(): Promise<ProcessCandidate | null> {
+  private async detectProcesses(): Promise<ProcessCandidate[]> {
     if (os.platform() === 'win32') {
-      return null;
+      return [];
     }
 
+    const allCandidates: ProcessCandidate[] = [];
     const processNames = getProcessNames();
     for (const processName of processNames) {
       const stdout = await runCommand(`ps -ww -eo pid,ppid,args | grep "${processName}" | grep -v grep | grep -v graftcp`);
-      const parsed = parseProcessInfo(stdout);
-      if (parsed) {
-        return parsed;
+      const candidates = parseProcessInfoCandidates(stdout);
+      if (candidates.length > 0) {
+        this.log?.(`ProcessLocator: found ${candidates.length} candidate process(es) for ${processName}; pids=[${candidates.map((candidate) => candidate.pid).join(', ')}].`);
       }
+      allCandidates.push(...candidates);
     }
 
-    return null;
+    return dedupeProcesses(allCandidates);
   }
 
   private async getListeningPorts(pid: number): Promise<number[]> {
@@ -100,9 +125,9 @@ async function runCommand(command: string): Promise<string> {
   }
 }
 
-function parseProcessInfo(stdout: string): ProcessCandidate | null {
+function parseProcessInfoCandidates(stdout: string): ProcessCandidate[] {
   if (!stdout.trim()) {
-    return null;
+    return [];
   }
 
   const candidates: ProcessCandidate[] = [];
@@ -137,7 +162,15 @@ function parseProcessInfo(stdout: string): ProcessCandidate | null {
     });
   }
 
-  return candidates[0] ?? null;
+  return candidates;
+}
+
+function dedupeProcesses(candidates: ProcessCandidate[]): ProcessCandidate[] {
+  const byPid = new Map<number, ProcessCandidate>();
+  for (const candidate of candidates) {
+    byPid.set(candidate.pid, candidate);
+  }
+  return [...byPid.values()].sort((left, right) => right.pid - left.pid);
 }
 
 function parsePorts(stdout: string): number[] {
