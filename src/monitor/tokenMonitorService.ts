@@ -148,16 +148,23 @@ export class TokenMonitorService implements vscode.Disposable {
     };
   }
 
-  async refresh(options?: { skipExport?: boolean; force?: boolean }): Promise<void> {
+  async refresh(options?: { skipExport?: boolean; force?: boolean; selectiveForce?: boolean }): Promise<void> {
     if (this.running) {
+      this.log('Refresh skipped: service is already running.');
       return;
     }
 
     const config = this.configProvider();
+    this.log(
+      `Refresh requested: force=${options?.force === true} selectiveForce=${options?.selectiveForce === true} skipExport=${options?.skipExport === true}.`
+    );
 
     if (!options?.force) {
       const freshState = await this.store.load();
       if (freshState.lastPollAt && Date.now() - freshState.lastPollAt < config.pollIntervalMs * 0.8) {
+        this.log(
+          `Refresh reused persisted state: lastPollAt=${freshState.lastPollAt} ageMs=${Date.now() - freshState.lastPollAt} thresholdMs=${config.pollIntervalMs * 0.8}.`
+        );
         this.state = freshState;
         this.emit();
         return;
@@ -184,31 +191,37 @@ export class TokenMonitorService implements vscode.Disposable {
         }
 
         const artifactManifests = !options?.skipExport && artifactStore
-          ? (await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(scanResult.sessions)).manifests
+          ? (await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(
+              scanResult.sessions,
+              { force: options?.force === true, selectiveForce: options?.selectiveForce === true }
+            )).manifests
           : new Map();
 
         const capturedAt = Date.now();
         const nextSessions: PersistedState['sessions'] = { ...this.state.sessions };
         const seenIds = new Set<string>();
-        let skippedFilesystemCandidates = 0;
+        let filesystemFallbackCandidates = 0;
 
         for (const candidate of scanResult.sessions) {
           const parsePlan = await resolveParsePlan(candidate, artifactStore, artifactManifests.get(candidate.sessionId));
-          if (parsePlan.source !== 'rpc-artifact') {
-            skippedFilesystemCandidates += 1;
-            continue;
-          }
-
           seenIds.add(candidate.sessionId);
+          if (parsePlan.source !== 'rpc-artifact') {
+            filesystemFallbackCandidates += 1;
+            this.log(`Refresh falling back to filesystem session=${candidate.sessionId}.`);
+          }
           const previous = this.state.sessions[candidate.sessionId];
 
           if (previous && previous.signature === parsePlan.analysisSignature && hasPricingBreakdown(previous.latest)) {
+            this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
             nextSessions[candidate.sessionId] = previous;
             continue;
           }
 
           const latest = await parser.parse(parsePlan);
           const snapshot = this.calculator.calculate(previous, latest, capturedAt);
+          this.log(
+            `Refresh parsed session=${candidate.sessionId} source=${parsePlan.source} previousTotal=${previous?.latest.totalTokens ?? 0} latestTotal=${latest.totalTokens} deltaTotal=${snapshot.totalTokens}.`
+          );
           nextSessions[candidate.sessionId] = {
             signature: parsePlan.analysisSignature,
             latest,
@@ -222,8 +235,8 @@ export class TokenMonitorService implements vscode.Disposable {
           }
         }
 
-        if (skippedFilesystemCandidates > 0) {
-          this.log(`Skipped ${skippedFilesystemCandidates} filesystem-only session candidate(s); dashboard now reads exported RPC artifacts only.`);
+        if (filesystemFallbackCandidates > 0) {
+          this.log(`Refresh used filesystem fallback for ${filesystemFallbackCandidates} session candidate(s).`);
         }
 
         this.state = {
@@ -231,6 +244,7 @@ export class TokenMonitorService implements vscode.Disposable {
           sessions: nextSessions
       };
       this.lastError = undefined;
+      this.log(`Refresh completed: trackedSessions=${Object.keys(nextSessions).length} capturedAt=${capturedAt}.`);
       await this.store.save(this.state);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : 'Failed to refresh token data.';
@@ -249,14 +263,20 @@ export class TokenMonitorService implements vscode.Disposable {
 
     this.manualRefreshTimer = setTimeout(() => {
       this.manualRefreshTimer = null;
-      void this.refresh({ force: true });
+      void this.refreshNow();
     }, TokenMonitorService.MANUAL_REFRESH_DELAY_MS);
   }
 
-  async exportNow(options?: { force?: boolean; refreshAfter?: boolean }): Promise<number> {
-    const exportedCount = await this.runExportCycle({ force: options?.force === true });
+  async refreshNow(): Promise<number> {
+    const exportedCount = await this.runExportCycle({ selectiveForce: true });
+    await this.refresh({ skipExport: true, force: true, selectiveForce: true });
+    return exportedCount;
+  }
+
+  async exportNow(options?: { force?: boolean; selectiveForce?: boolean; refreshAfter?: boolean }): Promise<number> {
+    const exportedCount = await this.runExportCycle({ force: options?.force === true, selectiveForce: options?.selectiveForce === true });
     if (options?.refreshAfter !== false) {
-      await this.refresh({ skipExport: true, force: true });
+      await this.refresh({ skipExport: true, force: true, selectiveForce: options?.selectiveForce === true });
     }
     return exportedCount;
   }
@@ -340,15 +360,19 @@ export class TokenMonitorService implements vscode.Disposable {
     this.exportTimer = null;
   }
 
-  private async runExportCycle(options?: { force?: boolean }): Promise<number> {
+  private async runExportCycle(options?: { force?: boolean; selectiveForce?: boolean }): Promise<number> {
     if (this.exportRunning) {
+      this.log('Export skipped: service export is already running.');
       return 0;
     }
 
     const config = this.configProvider();
     if (!config.useRpcExport) {
+      this.log('Export skipped: RPC export is disabled.');
       return 0;
     }
+
+    this.log(`Export requested: force=${options?.force === true} selectiveForce=${options?.selectiveForce === true}.`);
 
     const exportLock = PollLock.forExport(config.sessionRoot);
     if (!await exportLock.tryAcquire()) {
@@ -369,7 +393,7 @@ export class TokenMonitorService implements vscode.Disposable {
       const artifactStore = new RpcArtifactStore(config.sessionRoot);
       const exportResult = await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(
         scanResult.sessions,
-        { force: options?.force === true }
+        { force: options?.force === true, selectiveForce: options?.selectiveForce === true }
       );
       this.lastExportAt = Date.now();
       this.lastExportedCount = exportResult.exportedCount;

@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const panel = new DashboardPanel(
     context.extensionUri,
-    () => { void service.exportNow({ force: false, refreshAfter: true }); }
+    () => { void service.refreshNow(); }
   );
   const statusBar = new TokenStatusBar();
 
@@ -40,7 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.refreshNow`, async () => {
-    void service.exportNow({ force: false, refreshAfter: true });
+    void service.refreshNow();
     panel.show(service.getDashboardState());
   }));
 
@@ -52,11 +52,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.resetCache`, async () => {
     const confirm = await vscode.window.showWarningMessage(
-      'Antigravity Token Monitor: 모든 캐시 데이터를 삭제하고 처음부터 다시 처리합니다. 계속하시겠습니까?',
+      'Antigravity Token Monitor: This deletes all cached data and reprocesses everything from scratch. Do you want to continue?',
       { modal: true },
-      '초기화'
+      'Reset Cache'
     );
-    if (confirm !== '초기화') {
+    if (confirm !== 'Reset Cache') {
       return;
     }
 
@@ -64,11 +64,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const clearedCount = await service.resetCache();
       panel.show(service.getDashboardState());
       void vscode.window.showInformationMessage(
-        `캐시 초기화 완료: ${clearedCount}개 세션 캐시 삭제 후 재처리를 시작했습니다.`
+        `Reset cache complete: cleared ${clearedCount} session cache${clearedCount === 1 ? '' : 's'} and started reprocessing.`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      void vscode.window.showErrorMessage(`캐시 초기화 실패: ${message}`);
+      void vscode.window.showErrorMessage(`Reset cache failed: ${message}`);
     }
   }));
 

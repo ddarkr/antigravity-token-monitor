@@ -47,7 +47,7 @@
       },
       {
         "command": "antigravity-token-monitor.resetCache",
-        "title": "Antigravity Token Monitor: Reset Cache (캐시 초기화)",
+        "title": "Antigravity Token Monitor: Reset Cache",
         "icon": "$(trash)"
       }
     ],
