@@ -4,7 +4,8 @@ export const mockDashboardState: DashboardState = {
   rootPath: '/mock/path',
   config: {
     useRpcExport: true,
-    exportStepsJsonl: false
+    exportStepsJsonl: false,
+    pollIntervalMs: 60000
   },
   lastPollAt: 1600000000000,
   syncStatus: 'idle',
