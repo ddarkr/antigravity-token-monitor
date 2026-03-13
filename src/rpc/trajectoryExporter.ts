@@ -10,6 +10,8 @@ type TrajectorySummary = {
   stepCount?: number;
 };
 
+const MAX_RPC_ATTEMPTS = 2;
+
 export class TrajectoryExporter {
   private readonly client: AntigravityRpcClient;
 
@@ -32,90 +34,133 @@ export class TrajectoryExporter {
 
     let exportedCount = 0;
 
-    let summaries: TrajectorySummary[];
     try {
-      // flush()는 실패해도 export를 중단하지 않음 (큐 비우기는 best-effort)
-      await this.client.flush().catch((err) => {
-        console.warn('[antigravity-token-monitor] RPC flush warn (non-fatal):', err);
-      });
-      summaries = await this.client.listTrajectories();
+      const summaries = await this.fetchSummariesWithRetry();
       this.log?.(`RPC summaries fetched: ${summaries.length}. Scanner candidates: ${candidates.length}.`);
+      const summaryById = new Map(summaries.map((summary) => [summary.sessionId, summary]));
+      let unmatchedCount = 0;
+
+      for (const candidate of candidates) {
+        let summary = summaryById.get(candidate.sessionId);
+        if (!summary) {
+          unmatchedCount += 1;
+          // 목록에서 누락된 경우, 파일 시스템의 메타데이터를 기반으로 강제 조회 시도 (Fallback)
+          summary = {
+            sessionId: candidate.sessionId,
+            lastModifiedMs: candidate.lastModifiedMs,
+            stepCount: undefined
+          };
+        }
+
+        const previous = await this.artifactStore.loadManifest(candidate.sessionId);
+        const force = options?.force === true;
+        const selectiveForce = options?.selectiveForce === true;
+        const shouldForceThisSession = force || (
+          selectiveForce && (
+            summaryById.has(candidate.sessionId)
+            || !previous?.artifactHash
+            || (previous?.failureCount ?? 0) > 0
+          )
+        );
+        const exportNeeded = shouldExport(summary, previous, shouldForceThisSession);
+        this.log?.(
+          `TrajectoryExporter: session=${candidate.sessionId} exportNeeded=${exportNeeded} force=${force} selectiveForce=${selectiveForce} forcedSession=${shouldForceThisSession} previousModified=${previous?.serverLastModifiedMs ?? 'none'} nextModified=${summary.lastModifiedMs ?? 'none'} previousStepCount=${previous?.stepCount ?? 'none'} nextStepCount=${summary.stepCount ?? 'none'}.`
+        );
+        if (!exportNeeded) {
+          if (previous) {
+            manifests.set(candidate.sessionId, previous);
+          }
+          continue;
+        }
+
+        try {
+          const payload = await this.fetchSessionPayloadWithRetry(candidate.sessionId);
+          this.log?.(
+            `TrajectoryExporter: session=${candidate.sessionId} fetched steps=${payload.steps.length} metadata=${payload.metadata.length}.`
+          );
+          const next = await this.artifactStore.writeSessionArtifacts({
+            sessionId: candidate.sessionId,
+            serverLastModifiedMs: summary.lastModifiedMs,
+            stepCount: summary.stepCount,
+            steps: this.config.exportStepsJsonl ? serializeSteps(candidate.sessionId, payload.steps) : undefined,
+            usage: serializeUsage(candidate.sessionId, payload.metadata)
+          });
+          manifests.set(candidate.sessionId, next);
+          exportedCount += 1;
+        } catch (error) {
+          await this.artifactStore.recordFailure(candidate.sessionId, error);
+          const message = toErrorMessage(error);
+          this.log?.(`TrajectoryExporter: session=${candidate.sessionId} export failure recorded: ${message}`);
+          console.warn(`[antigravity-token-monitor] Failed to export RPC artifacts for ${candidate.sessionId}:`, error);
+        }
+      }
+
+      if (unmatchedCount > 0) {
+        this.log?.(
+          `RPC export fallback: Forced direct export for ${unmatchedCount} candidate(s) not found in RPC summaries.`
+        );
+      }
+
+      this.log?.(`RPC export processed ${candidates.length} scanner candidates; wrote ${exportedCount} artifact set(s).`);
+
+      return { manifests, exportedCount };
     } catch (error) {
-      // 연결 오류 시 캐시 초기화 → 다음 export 사이클에서 재탐지
-      this.client.resetConnection();
+      const message = toErrorMessage(error);
+      this.log?.(`TrajectoryExporter: RPC export unavailable after retry: ${message}`);
       console.warn('[antigravity-token-monitor] RPC export unavailable:', error);
       return { manifests, exportedCount };
     }
+  }
 
-    const summaryById = new Map(summaries.map((summary) => [summary.sessionId, summary]));
-    let unmatchedCount = 0;
-
-    for (const candidate of candidates) {
-      let summary = summaryById.get(candidate.sessionId);
-      if (!summary) {
-        unmatchedCount += 1;
-        // 목록에서 누락된 경우, 파일 시스템의 메타데이터를 기반으로 강제 조회 시도 (Fallback)
-        summary = {
-          sessionId: candidate.sessionId,
-          lastModifiedMs: candidate.lastModifiedMs,
-          stepCount: undefined
-        };
-      }
-
-      const previous = await this.artifactStore.loadManifest(candidate.sessionId);
-      const force = options?.force === true;
-      const selectiveForce = options?.selectiveForce === true;
-      const shouldForceThisSession = force || (
-        selectiveForce && (
-          summaryById.has(candidate.sessionId)
-          || !previous?.artifactHash
-          || (previous?.failureCount ?? 0) > 0
-        )
-      );
-      const exportNeeded = shouldExport(summary, previous, shouldForceThisSession);
-      this.log?.(
-        `TrajectoryExporter: session=${candidate.sessionId} exportNeeded=${exportNeeded} force=${force} selectiveForce=${selectiveForce} forcedSession=${shouldForceThisSession} previousModified=${previous?.serverLastModifiedMs ?? 'none'} nextModified=${summary.lastModifiedMs ?? 'none'} previousStepCount=${previous?.stepCount ?? 'none'} nextStepCount=${summary.stepCount ?? 'none'}.`
-      );
-      if (!exportNeeded) {
-        if (previous) {
-          manifests.set(candidate.sessionId, previous);
-        }
-        continue;
-      }
+  private async fetchSummariesWithRetry(): Promise<TrajectorySummary[]> {
+    for (let attempt = 1; attempt <= MAX_RPC_ATTEMPTS; attempt += 1) {
+      await this.client.flush().catch((error) => {
+        const message = toErrorMessage(error);
+        this.log?.(`TrajectoryExporter: RPC flush warning on attempt ${attempt}/${MAX_RPC_ATTEMPTS}: ${message}`);
+        console.warn('[antigravity-token-monitor] RPC flush warn (non-fatal):', error);
+      });
 
       try {
-        const steps = await this.client.getTrajectorySteps(candidate.sessionId);
-        const metadata = await this.client.getTrajectoryMetadata(candidate.sessionId);
-        this.log?.(
-          `TrajectoryExporter: session=${candidate.sessionId} fetched steps=${steps.length} metadata=${metadata.length}.`
-        );
-        const next = await this.artifactStore.writeSessionArtifacts({
-          sessionId: candidate.sessionId,
-          serverLastModifiedMs: summary.lastModifiedMs,
-          stepCount: summary.stepCount,
-          steps: this.config.exportStepsJsonl ? serializeSteps(candidate.sessionId, steps) : undefined,
-          usage: serializeUsage(candidate.sessionId, metadata)
-        });
-        manifests.set(candidate.sessionId, next);
-        exportedCount += 1;
+        return await this.client.listTrajectories();
       } catch (error) {
-        await this.artifactStore.recordFailure(candidate.sessionId, error);
-        const message = error instanceof Error ? error.message : String(error);
-        this.log?.(`TrajectoryExporter: session=${candidate.sessionId} export failure recorded: ${message}`);
-        console.warn(`[antigravity-token-monitor] Failed to export RPC artifacts for ${candidate.sessionId}:`, error);
+        const message = toErrorMessage(error);
+        this.log?.(`TrajectoryExporter: RPC summary fetch failed on attempt ${attempt}/${MAX_RPC_ATTEMPTS}: ${message}`);
+        if (attempt >= MAX_RPC_ATTEMPTS) {
+          throw error;
+        }
+        this.log?.('TrajectoryExporter: resetting RPC connection cache and retrying summary fetch immediately.');
+        this.client.resetConnection();
       }
     }
 
-    if (unmatchedCount > 0) {
-      this.log?.(
-        `RPC export fallback: Forced direct export for ${unmatchedCount} candidate(s) not found in RPC summaries.`
-      );
+    return [];
+  }
+
+  private async fetchSessionPayloadWithRetry(sessionId: string): Promise<{ steps: unknown[]; metadata: unknown[] }> {
+    for (let attempt = 1; attempt <= MAX_RPC_ATTEMPTS; attempt += 1) {
+      try {
+        const steps = await this.client.getTrajectorySteps(sessionId);
+        const metadata = await this.client.getTrajectoryMetadata(sessionId);
+        return { steps, metadata };
+      } catch (error) {
+        const message = toErrorMessage(error);
+        this.log?.(
+          `TrajectoryExporter: session=${sessionId} RPC payload fetch failed on attempt ${attempt}/${MAX_RPC_ATTEMPTS}: ${message}`
+        );
+        if (attempt >= MAX_RPC_ATTEMPTS) {
+          throw error;
+        }
+        this.log?.(`TrajectoryExporter: session=${sessionId} resetting RPC connection cache and retrying immediately.`);
+        this.client.resetConnection();
+      }
     }
 
-    this.log?.(`RPC export processed ${candidates.length} scanner candidates; wrote ${exportedCount} artifact set(s).`);
-
-    return { manifests, exportedCount };
+    return { steps: [], metadata: [] };
   }
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest | null, force: boolean): boolean {
