@@ -413,6 +413,10 @@ export class TokenMonitorService implements vscode.Disposable {
   }
 
   private log(message: string): void {
+    if (!this.configProvider().debug) {
+      return;
+    }
+
     this.outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
   }
 

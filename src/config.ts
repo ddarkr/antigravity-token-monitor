@@ -6,6 +6,7 @@ export const EXTENSION_ID = 'antigravity-token-monitor';
 
 export type MonitorConfig = {
   sessionRoot: string;
+  debug: boolean;
   pollIntervalMs: number;
   historyLimit: number;
   maxFileBytes: number;
@@ -25,6 +26,7 @@ export function readConfig(): MonitorConfig {
 
   return {
     sessionRoot,
+    debug: config.get<boolean>('debug', false),
     pollIntervalMs: config.get<number>('pollIntervalMs', 60000),
     historyLimit: config.get<number>('historyLimit', 120),
     maxFileBytes: config.get<number>('maxFileBytes', 524288),

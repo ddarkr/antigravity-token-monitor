@@ -59,6 +59,11 @@
           "default": "",
           "description": "Override the Antigravity session root. Leave empty to use ~/.gemini/antigravity."
         },
+        "antigravity-token-monitor.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show verbose debug logs in the Antigravity Token Monitor output channel."
+        },
         "antigravity-token-monitor.pollIntervalMs": {
           "type": "number",
           "default": 60000,
