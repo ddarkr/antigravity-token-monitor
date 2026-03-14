@@ -27,7 +27,7 @@
     <article class="stat-block">
       <div class="stat-label">Total Messages</div>
       <div class="stat-value">{formatNumber(summary.messageCount)}</div>
-      <div class="stat-context">Counted from exported `steps.jsonl` rows</div>
+      <div class="stat-context">Total message count retrieved from each session</div>
     </article>
 
     <div class="stat-divider"></div>

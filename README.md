@@ -7,6 +7,8 @@
 
 > Monitor Antigravity session token usage and review session activity in a dashboard.
 
+![Dashboard Preview](docs/screenshot.png)
+
 Antigravity Token Monitor is a VS Code extension that automatically collects, analyzes, and visualizes **token usage** across your [Antigravity](https://blog.google/technology/google-deepmind/) coding sessions. It connects to the running Antigravity process via internal RPC, exports token metadata as local JSONL artifacts, and presents the data through a rich Svelte-powered dashboard and a persistent status bar indicator.
 
 ---

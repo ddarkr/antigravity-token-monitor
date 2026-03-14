@@ -8,17 +8,35 @@
   let timeRemaining = 0;
   let progress = 0;
   let animationFrameId: number;
+  let firedAutoRefresh = false;
+  let lastSeenPollAt: number | undefined;
 
   function tick() {
     if (state.lastPollAt && state.config.pollIntervalMs && state.syncStatus === 'idle') {
+      // Reset auto-refresh flag when a new poll result arrives
+      if (lastSeenPollAt !== state.lastPollAt) {
+        lastSeenPollAt = state.lastPollAt;
+        firedAutoRefresh = false;
+      }
+
       const now = Date.now();
       const nextPollAt = state.lastPollAt + state.config.pollIntervalMs;
       const remaining = Math.max(0, nextPollAt - now);
       timeRemaining = Math.ceil(remaining / 1000);
       progress = 1 - (remaining / state.config.pollIntervalMs);
+
+      // Trigger auto-refresh when countdown reaches 0
+      if (remaining === 0 && !firedAutoRefresh) {
+        firedAutoRefresh = true;
+        vscodeApi.postMessage({ type: 'dashboard/refresh' });
+      }
     } else {
       timeRemaining = 0;
       progress = 0;
+      // Reset flag when sync is running so next idle cycle can fire again
+      if (state.syncStatus === 'running') {
+        firedAutoRefresh = false;
+      }
     }
     animationFrameId = requestAnimationFrame(tick);
   }
