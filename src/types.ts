@@ -68,10 +68,19 @@ export type SessionSnapshot = TokenBreakdown & {
   mode: TokenMode;
 };
 
+export type SessionLifecycleStatus = 'active' | 'archived';
+
+export type SessionLifecycle = {
+  status: SessionLifecycleStatus;
+  lastSeenAt: number;
+  archivedAt?: number;
+};
+
 export type PersistedSessionState = {
   signature: string;
   latest: SessionTotals;
   snapshots: SessionSnapshot[];
+  lifecycle: SessionLifecycle;
 };
 
 export type PersistedState = {
@@ -84,6 +93,9 @@ export type DashboardSession = {
   label: string;
   filePath: string;
   lastModifiedMs: number;
+  status: SessionLifecycleStatus;
+  lastSeenAt: number;
+  archivedAt?: number;
   mode: TokenMode;
   source: TokenSource;
   messageCount: number;
@@ -173,6 +185,8 @@ export type DashboardState = {
   sessions: DashboardSession[];
   summary: {
     sessionCount: number;
+    activeSessionCount: number;
+    archivedSessionCount: number;
     messageCount: number;
     changedSessionCount: number;
     totalTokens: number;

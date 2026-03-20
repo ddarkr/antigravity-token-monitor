@@ -14,9 +14,8 @@ describe('deriveDashboardInsights', () => {
     expect(insights.tokenBreakdown.cacheWriteTokens).toBe(30);
     expect(insights.tokenBreakdown.reasoningTokens).toBe(60);
     expect(insights.tokenBreakdown.totalTokens).toBe(600);
-    // session-2 has a higher latestDelta.totalTokens (30 vs 15)
-    expect(insights.sortedSessions[0].sessionId).toBe('session-2');
-    expect(insights.sortedSessions[1].sessionId).toBe('session-1');
+    expect(insights.sortedSessions[0].sessionId).toBe('session-1');
+    expect(insights.sortedSessions[1].sessionId).toBe('session-2');
   });
 
   it('handles empty sessions', () => {

@@ -19,7 +19,7 @@
     <article class="stat-block">
       <div class="stat-label">Total Sessions</div>
       <div class="stat-value">{formatNumber(summary.sessionCount)}</div>
-      <div class="stat-context">Sessions currently tracked by the dashboard</div>
+      <div class="stat-context">{formatNumber(summary.activeSessionCount)} active, {formatNumber(summary.archivedSessionCount)} archived</div>
     </article>
 
     <div class="stat-divider"></div>

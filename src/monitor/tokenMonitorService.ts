@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { MonitorConfig } from '../config';
 import { resolveParsePlan } from './sourceResolver';
@@ -11,6 +12,7 @@ import {
   DashboardState,
   PersistedState,
   PersistedSessionState,
+  SessionLifecycle,
   SessionSnapshot,
   SessionTotals,
   SourceBreakdown,
@@ -89,7 +91,7 @@ export class TokenMonitorService implements vscode.Disposable {
   ) {}
 
   async initialize(): Promise<void> {
-    this.state = await this.store.load();
+    this.state = normalizePersistedState(await this.store.load());
     await this.refresh();
     this.startTimer();
     this.startExportTimer();
@@ -106,7 +108,9 @@ export class TokenMonitorService implements vscode.Disposable {
   getDashboardState(): DashboardState {
     const sessions = Object.values(this.state.sessions)
       .map((session) => toDashboardSession(session))
-      .sort((a, b) => b.lastModifiedMs - a.lastModifiedMs);
+      .sort(compareDashboardSessions);
+    const activeSessions = sessions.filter((session) => session.status === 'active');
+    const archivedSessions = sessions.filter((session) => session.status === 'archived');
     const analyticsBundle = buildDashboardAnalytics(
       this.state.sessions,
       this.lastExportedCount,
@@ -138,8 +142,10 @@ export class TokenMonitorService implements vscode.Disposable {
       sessions,
       summary: {
         sessionCount: sessions.length,
+        activeSessionCount: activeSessions.length,
+        archivedSessionCount: archivedSessions.length,
         messageCount: sessions.reduce((sum, session) => sum + session.messageCount, 0),
-        changedSessionCount: sessions.filter((session) => session.latestDelta.totalTokens > 0).length,
+        changedSessionCount: activeSessions.filter((session) => session.latestDelta.totalTokens > 0).length,
         totalTokens: sessions.reduce((sum, session) => sum + session.latest.totalTokens, 0),
         estimatedSessionCount: sessions.filter((session) => session.mode === 'estimated').length
       },
@@ -160,7 +166,7 @@ export class TokenMonitorService implements vscode.Disposable {
     );
 
     if (!options?.force) {
-      const freshState = await this.store.load();
+      const freshState = normalizePersistedState(await this.store.load());
       if (freshState.lastPollAt && Date.now() - freshState.lastPollAt < config.pollIntervalMs * 0.8) {
         this.log(
           `Refresh reused persisted state: lastPollAt=${freshState.lastPollAt} ageMs=${Date.now() - freshState.lastPollAt} thresholdMs=${config.pollIntervalMs * 0.8}.`
@@ -184,7 +190,7 @@ export class TokenMonitorService implements vscode.Disposable {
         const parser = this.parserFactory(config);
         const artifactStore = config.useRpcExport ? new RpcArtifactStore(config.sessionRoot) : undefined;
         await this.refreshPricing();
-        const scanResult = await this.scanner.scan(config.sessionRoot);
+        const scanResult = normalizeScanResult(await this.scanner.scan(config.sessionRoot), config.sessionRoot);
         if (!scanResult.complete) {
           this.lastError = scanResult.error ?? 'Session scan did not complete.';
           return;
@@ -213,7 +219,7 @@ export class TokenMonitorService implements vscode.Disposable {
 
           if (previous && previous.signature === parsePlan.analysisSignature && hasPricingBreakdown(previous.latest)) {
             this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
-            nextSessions[candidate.sessionId] = previous;
+            nextSessions[candidate.sessionId] = reactivatePersistedSession(previous, capturedAt, config.historyLimit);
             continue;
           }
 
@@ -225,13 +231,14 @@ export class TokenMonitorService implements vscode.Disposable {
           nextSessions[candidate.sessionId] = {
             signature: parsePlan.analysisSignature,
             latest,
-            snapshots: appendSnapshot(previous?.snapshots ?? [], snapshot, config.historyLimit)
+            snapshots: appendSnapshot(previous?.snapshots ?? [], snapshot, config.historyLimit),
+            lifecycle: createActiveLifecycle(capturedAt)
           };
       }
 
         for (const sessionId of Object.keys(nextSessions)) {
           if (!seenIds.has(sessionId)) {
-            delete nextSessions[sessionId];
+            nextSessions[sessionId] = archivePersistedSession(nextSessions[sessionId], capturedAt);
           }
         }
 
@@ -383,7 +390,7 @@ export class TokenMonitorService implements vscode.Disposable {
     this.exportRunning = true;
     this.emit();
     try {
-      const scanResult = await this.scanner.scan(config.sessionRoot);
+      const scanResult = normalizeScanResult(await this.scanner.scan(config.sessionRoot), config.sessionRoot);
       if (!scanResult.complete) {
         this.lastExportError = scanResult.error ?? 'Session scan did not complete.';
         this.log(`Export skipped: ${this.lastExportError}`);
@@ -476,22 +483,16 @@ function appendSnapshot(existing: SessionSnapshot[], next: SessionSnapshot, hist
 
 function toDashboardSession(session: PersistedSessionState) {
   const source = session.latest.source ?? 'filesystem';
-  const latestDelta = session.snapshots[session.snapshots.length - 1] ?? {
-    capturedAt: 0,
-    mode: session.latest.mode,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    reasoningTokens: 0,
-    totalTokens: 0
-  };
+  const latestDelta = currentLatestDelta(session);
 
   return {
     sessionId: session.latest.sessionId,
     label: session.latest.label,
     filePath: session.latest.filePath,
     lastModifiedMs: session.latest.lastModifiedMs,
+    status: session.lifecycle.status,
+    lastSeenAt: session.lifecycle.lastSeenAt,
+    archivedAt: session.lifecycle.archivedAt,
     mode: session.latest.mode,
     source,
     messageCount: session.latest.messageCount ?? 0,
@@ -499,6 +500,23 @@ function toDashboardSession(session: PersistedSessionState) {
     latestDelta: totalsOnly(latestDelta),
     recentTotals: session.snapshots.slice(-12).map((snapshot) => snapshot.totalTokens),
     snapshotCount: session.snapshots.length
+  };
+}
+
+function emptySnapshot(mode: TokenMode): SessionSnapshot {
+  return emptySnapshotAt(mode, 0);
+}
+
+function emptySnapshotAt(mode: TokenMode, capturedAt: number): SessionSnapshot {
+  return {
+    capturedAt,
+    mode,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0
   };
 }
 
@@ -515,6 +533,115 @@ function totalsOnly(value: SessionTotals | SessionSnapshot) {
 
 function hasPricingBreakdown(latest: SessionTotals): boolean {
   return latest.mode === 'estimated' || latest.modelBreakdowns !== undefined;
+}
+
+function normalizePersistedState(state: PersistedState): PersistedState {
+  return {
+    lastPollAt: state.lastPollAt,
+    sessions: Object.fromEntries(
+      Object.entries(state.sessions).map(([sessionId, session]) => [sessionId, normalizePersistedSession(session)])
+    )
+  };
+}
+
+function normalizePersistedSession(session: PersistedSessionState): PersistedSessionState {
+  const defaultLastSeenAt = session.latest.lastModifiedMs;
+  return {
+    ...session,
+    lifecycle: session.lifecycle
+      ? {
+          status: session.lifecycle.status,
+          lastSeenAt: session.lifecycle.lastSeenAt,
+          archivedAt: session.lifecycle.archivedAt
+        }
+      : {
+          status: 'active',
+          lastSeenAt: defaultLastSeenAt
+        }
+  };
+}
+
+function createActiveLifecycle(lastSeenAt: number): SessionLifecycle {
+  return {
+    status: 'active',
+    lastSeenAt
+  };
+}
+
+function activatePersistedSession(session: PersistedSessionState, lastSeenAt: number): PersistedSessionState {
+  return {
+    ...session,
+    lifecycle: createActiveLifecycle(lastSeenAt)
+  };
+}
+
+function reactivatePersistedSession(
+  session: PersistedSessionState,
+  lastSeenAt: number,
+  historyLimit: number
+): PersistedSessionState {
+  if (session.lifecycle.status !== 'archived') {
+    return activatePersistedSession(session, lastSeenAt);
+  }
+
+  return {
+    ...session,
+    snapshots: appendSnapshot(session.snapshots, emptySnapshotAt(session.latest.mode, lastSeenAt), historyLimit),
+    lifecycle: createActiveLifecycle(lastSeenAt)
+  };
+}
+
+function archivePersistedSession(session: PersistedSessionState, archivedAt: number): PersistedSessionState {
+  if (session.lifecycle.status === 'archived') {
+    return session;
+  }
+
+  return {
+    ...session,
+    lifecycle: {
+      status: 'archived',
+      lastSeenAt: session.lifecycle.lastSeenAt,
+      archivedAt
+    }
+  };
+}
+
+function normalizeScanResult(
+  scanResult: Awaited<ReturnType<SessionScanner['scan']>>,
+  sessionRoot: string
+) {
+  if (scanResult.complete || !isMissingBrainDirectoryError(scanResult.error, sessionRoot)) {
+    return scanResult;
+  }
+
+  return {
+    sessions: [],
+    complete: true,
+    error: undefined
+  };
+}
+
+function isMissingBrainDirectoryError(error: string | undefined, sessionRoot: string): boolean {
+  const brainDir = path.join(sessionRoot, 'brain');
+  return error?.includes('ENOENT') === true
+    && error.includes(brainDir)
+    && (error.includes('scandir') || error.includes('readdir'));
+}
+
+function compareDashboardSessions(a: ReturnType<typeof toDashboardSession>, b: ReturnType<typeof toDashboardSession>): number {
+  if (a.status !== b.status) {
+    return a.status === 'active' ? -1 : 1;
+  }
+
+  return b.lastModifiedMs - a.lastModifiedMs;
+}
+
+function currentLatestDelta(session: PersistedSessionState): SessionSnapshot {
+  if (session.lifecycle.status === 'archived') {
+    return emptySnapshot(session.latest.mode);
+  }
+
+  return session.snapshots[session.snapshots.length - 1] ?? emptySnapshot(session.latest.mode);
 }
 
 function buildDashboardAnalytics(
@@ -541,7 +668,7 @@ function buildDashboardAnalytics(
     const source = persisted.latest.source ?? 'filesystem';
     const mode = persisted.latest.mode ?? 'estimated';
     const latest = persisted.latest;
-    const hasRecentActivity = persisted.snapshots.length > 0 && persisted.snapshots[persisted.snapshots.length - 1].totalTokens > 0;
+    const hasRecentActivity = persisted.lifecycle.status === 'active' && currentLatestDelta(persisted).totalTokens > 0;
 
     sourceBreakdown[source].sessionCount += 1;
     sourceBreakdown[source].totalTokens += latest.totalTokens;
@@ -694,7 +821,7 @@ function buildDashboardAnalytics(
 
   const trackedSessions = Object.keys(sessions).length;
   const changedSessions = Object.values(sessions).filter(
-    (persisted) => persisted.snapshots[persisted.snapshots.length - 1]?.totalTokens > 0
+    (persisted) => persisted.lifecycle.status === 'active' && currentLatestDelta(persisted).totalTokens > 0
   ).length;
   const rpcCoverage: RpcCoverageBreakdown = {
     trackedSessions,

@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { DashboardSession } from '../../types';
   import { formatNumber, formatDate, formatSource } from '../lib/formatters';
-  import { vscodeApi } from '../lib/vscodeApi';
   import SparkBars from './SparkBars.svelte';
 
   export let sessions: DashboardSession[];
@@ -36,11 +35,18 @@
                   <div class="session-name">{session.label}</div>
                   <div class="session-details">
                     <span>{formatDate(session.lastModifiedMs)}</span>
+                    {#if session.status === 'archived'}
+                      <span class="dot-separator">•</span>
+                      <span>Last seen {formatDate(session.lastSeenAt)}</span>
+                    {/if}
                   </div>
                 </div>
               </td>
               <td class="col-mode">
                 <div class="tags">
+                  <span class:tag={true} class:status-archived={session.status === 'archived'}>
+                    {session.status}
+                  </span>
                   <span class="tag mode-{session.mode}">{session.mode}</span>
                   <span class="tag source-{session.source}">{formatSource(session.source)}</span>
                 </div>
@@ -191,6 +197,11 @@
     font-size: 10px;
     font-weight: 500;
     letter-spacing: 0.02em;
+  }
+  .status-archived {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
   }
   .mode-reported {
     background: rgba(136, 216, 176, 0.1);

@@ -22,6 +22,8 @@ export const mockDashboardState: DashboardState = {
       label: 'Session 1',
       filePath: '/mock/path/session-1',
       lastModifiedMs: 1600000000000,
+      status: 'active',
+      lastSeenAt: 1600000000000,
       mode: 'reported',
       source: 'rpc-artifact',
       messageCount: 12,
@@ -49,6 +51,9 @@ export const mockDashboardState: DashboardState = {
       label: 'Session 2',
       filePath: '/mock/path/session-2',
       lastModifiedMs: 1600000001000,
+      status: 'archived',
+      lastSeenAt: 1600000000500,
+      archivedAt: 1600000001000,
       mode: 'estimated',
       source: 'filesystem',
       messageCount: 8,
@@ -61,12 +66,12 @@ export const mockDashboardState: DashboardState = {
         totalTokens: 400
       },
       latestDelta: {
-        inputTokens: 20,
-        outputTokens: 10,
+        inputTokens: 0,
+        outputTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         reasoningTokens: 0,
-        totalTokens: 30
+        totalTokens: 0
       },
       recentTotals: [200, 250, 300],
       snapshotCount: 3
@@ -74,6 +79,8 @@ export const mockDashboardState: DashboardState = {
   ],
   summary: {
     sessionCount: 2,
+    activeSessionCount: 1,
+    archivedSessionCount: 1,
     messageCount: 20,
     changedSessionCount: 1,
     totalTokens: 600,

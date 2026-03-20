@@ -32,6 +32,10 @@ export function deriveDashboardInsights(state: DashboardState): DerivedDashboard
     tokenBreakdown,
     hasSessions: state.sessions.length > 0,
     sortedSessions: [...state.sessions].sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === 'active' ? -1 : 1;
+      }
+
       return b.lastModifiedMs - a.lastModifiedMs;
     })
   };
