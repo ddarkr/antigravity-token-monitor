@@ -33,8 +33,8 @@ function createSnapshot(next: SessionTotals, capturedAt: number, delta: TokenBre
 
 function diffOrReset(previous: number, next: number): number {
   if (next < previous) {
-    return next;
+    // 카운터 리셋으로 간주 — 이전 누적 보존, delta는 0
+    return 0;
   }
-
   return next - previous;
 }

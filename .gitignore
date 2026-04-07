@@ -21,7 +21,8 @@ antigravity-storage-manager/
 *.cer
 *.der
 
-.token-monitor/
+
+.ralph/
 
 test-rpc*.ts
 test-invalid-id.ts
