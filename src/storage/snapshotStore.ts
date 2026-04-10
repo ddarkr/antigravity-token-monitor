@@ -8,6 +8,7 @@ const ARCHIVE_FILE_PREFIX = 'monitor-state.archive-';
 const ARCHIVE_FILE_SUFFIX = '.json';
 
 export class SnapshotStore {
+  private saveLock = false;
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async load(): Promise<PersistedState> {
@@ -36,49 +37,66 @@ export class SnapshotStore {
   }
 
   async save(state: PersistedState): Promise<void> {
-    const storageDir = this.getStorageDirectoryPath();
-    await fs.mkdir(storageDir, { recursive: true });
+    if (this.saveLock) {
+      console.warn('[antigravity-token-monitor] Save skipped: already in progress');
+      return;
+    }
+    this.saveLock = true;
+    try {
+      const storageDir = this.getStorageDirectoryPath();
+      await fs.mkdir(storageDir, { recursive: true });
 
-    const activeSessions: PersistedState['sessions'] = {};
-    const archivedByMonth = new Map<string, PersistedState['sessions']>();
+      const activeSessions: PersistedState['sessions'] = {};
+      const archivedByMonth = new Map<string, PersistedState['sessions']>();
 
-    for (const [sessionId, session] of Object.entries(state.sessions)) {
-      if (session.lifecycle.status === 'archived') {
-        const archiveMonth = resolveArchiveMonth(session);
-        const bucket = archivedByMonth.get(archiveMonth) ?? {};
-        bucket[sessionId] = session;
-        archivedByMonth.set(archiveMonth, bucket);
-        continue;
+      for (const [sessionId, session] of Object.entries(state.sessions)) {
+        if (session.lifecycle.status === 'archived') {
+          const archiveMonth = resolveArchiveMonth(session);
+          const bucket = archivedByMonth.get(archiveMonth) ?? {};
+          bucket[sessionId] = session;
+          archivedByMonth.set(archiveMonth, bucket);
+          continue;
+        }
+
+        activeSessions[sessionId] = session;
       }
 
-      activeSessions[sessionId] = session;
+      await fs.writeFile(
+        this.getStateFilePath(),
+        JSON.stringify({ lastPollAt: state.lastPollAt, sessions: activeSessions }, null, 2),
+        'utf8'
+      );
+
+      const expectedArchiveFiles = new Set<string>();
+      for (const [archiveMonth, sessions] of archivedByMonth) {
+        const filePath = this.getArchiveFilePath(archiveMonth);
+        expectedArchiveFiles.add(filePath);
+        await fs.writeFile(filePath, JSON.stringify({ sessions }, null, 2), 'utf8');
+      }
+
+      const existingArchiveFiles = await this.listArchiveFilePaths(storageDir);
+      await Promise.all(existingArchiveFiles
+        .filter((filePath) => !expectedArchiveFiles.has(filePath))
+        .map(async (filePath) => {
+          await fs.unlink(filePath);
+        }));
+    } finally {
+      this.saveLock = false;
     }
-
-    await fs.writeFile(
-      this.getStateFilePath(),
-      JSON.stringify({ lastPollAt: state.lastPollAt, sessions: activeSessions }, null, 2),
-      'utf8'
-    );
-
-    const expectedArchiveFiles = new Set<string>();
-    for (const [archiveMonth, sessions] of archivedByMonth) {
-      const filePath = this.getArchiveFilePath(archiveMonth);
-      expectedArchiveFiles.add(filePath);
-      await fs.writeFile(filePath, JSON.stringify({ sessions }, null, 2), 'utf8');
-    }
-
-    const existingArchiveFiles = await this.listArchiveFilePaths(storageDir);
-    await Promise.all(existingArchiveFiles
-      .filter((filePath) => !expectedArchiveFiles.has(filePath))
-      .map(async (filePath) => {
-        await fs.unlink(filePath);
-      }));
   }
 
   private async loadArchiveStates(storageDir: string): Promise<PersistedState[]> {
     const filePaths = await this.listArchiveFilePaths(storageDir);
-    const states = await Promise.all(filePaths.map((filePath) => this.loadJsonFile(filePath)));
-    return states.filter((state): state is PersistedState => state !== undefined);
+    const results: PersistedState[] = [];
+    for (const filePath of filePaths) {
+      try {
+        const state = await this.loadJsonFile(filePath);
+        if (state) results.push(state);
+      } catch (error) {
+        console.warn(`[antigravity-token-monitor] Failed to load archive ${filePath}:`, error);
+      }
+    }
+    return results;
   }
 
   private async loadJsonFile(filePath: string): Promise<PersistedState | undefined> {
@@ -122,6 +140,17 @@ function mergeSessionMaps(sessionMaps: Array<Record<string, PersistedSessionStat
 
 function resolveArchiveMonth(session: PersistedSessionState): string {
   const archivedAt = session.lifecycle.archivedAt ?? session.lifecycle.lastSeenAt;
+  // Validate timestamp to prevent NaN-NaN paths
+  if (!archivedAt || archivedAt <= 0) {
+    console.warn(`[antigravity-token-monitor] Invalid archivedAt for session ${session.latest.sessionId}, using current month`);
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
   const date = new Date(archivedAt);
+  if (isNaN(date.getTime())) {
+    console.warn(`[antigravity-token-monitor] Invalid date for session ${session.latest.sessionId}, using current month`);
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }

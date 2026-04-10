@@ -172,6 +172,7 @@ export class TokenMonitorService implements vscode.Disposable {
           `Refresh reused persisted state: lastPollAt=${freshState.lastPollAt} ageMs=${Date.now() - freshState.lastPollAt} thresholdMs=${config.pollIntervalMs * 0.8}.`
         );
         this.state = freshState;
+        this.lastError = undefined; // Clear stale errors on successful cooldown
         this.emit();
         return;
       }
@@ -196,12 +197,24 @@ export class TokenMonitorService implements vscode.Disposable {
           return;
         }
 
-        const artifactManifests = !options?.skipExport && artifactStore
-          ? (await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(
-              scanResult.sessions,
-              { force: options?.force === true, selectiveForce: options?.selectiveForce === true }
-            )).manifests
-          : new Map();
+        // Acquire export lock to prevent race with exportNow()
+        const exportLock = PollLock.forExport(config.sessionRoot);
+        let manifests = new Map<string, RpcArtifactManifest>();
+        if (!options?.skipExport && artifactStore) {
+          if (!await exportLock.tryAcquire()) {
+            this.log('Export skipped in refresh: another instance holds the lock.');
+          } else {
+            try {
+              manifests = (await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(
+                scanResult.sessions,
+                { force: options?.force === true, selectiveForce: options?.selectiveForce === true }
+              )).manifests;
+            } finally {
+              exportLock.release();
+            }
+          }
+        }
+        const artifactManifests = manifests;
 
         const capturedAt = Date.now();
         const nextSessions: PersistedState['sessions'] = { ...this.state.sessions };
@@ -219,7 +232,12 @@ export class TokenMonitorService implements vscode.Disposable {
 
           if (previous && previous.signature === parsePlan.analysisSignature && hasPricingBreakdown(previous.latest)) {
             this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
-            nextSessions[candidate.sessionId] = reactivatePersistedSession(previous, capturedAt, config.historyLimit);
+            // Still add empty snapshot to reset delta for next cycle
+            nextSessions[candidate.sessionId] = {
+              ...previous,
+              snapshots: appendSnapshot(previous.snapshots, emptySnapshotAt(previous.latest.mode, capturedAt), config.historyLimit),
+              lifecycle: createActiveLifecycle(capturedAt)
+            };
             continue;
           }
 

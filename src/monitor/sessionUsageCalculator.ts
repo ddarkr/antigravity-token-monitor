@@ -31,10 +31,18 @@ function createSnapshot(next: SessionTotals, capturedAt: number, delta: TokenBre
   };
 }
 
+function safeSubtract(current: number, previous: number): number {
+  if (!Number.isFinite(current)) return 0;
+  if (!Number.isFinite(previous)) return current;
+  const delta = current - previous;
+  if (!Number.isFinite(delta)) return 0;
+  return delta;
+}
+
 function diffOrReset(previous: number, next: number): number {
   if (next < previous) {
     // 카운터 리셋으로 간주 — 이전 누적 보존, delta는 0
     return 0;
   }
-  return next - previous;
+  return safeSubtract(next, previous);
 }

@@ -90,7 +90,8 @@ export class AntigravitySessionParser {
       }
 
       return { content: await fs.readFile(filePath, 'utf8') };
-    } catch {
+    } catch (error) {
+      console.warn(`[antigravity-token-monitor] Failed to read ${filePath}:`, error);
       return null;
     }
   }
@@ -136,6 +137,7 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
   extractedText += `\n${trimmed}`;
   try {
     const parsed = JSON.parse(content) as unknown;
+        messageCount = countMessages(parsed);
     const signal = walkForTokenSignals(parsed);
     mergeBreakdown(breakdown, signal.breakdown);
     mergeModelTotals(modelTotals, signal.modelTotals);
@@ -240,6 +242,21 @@ function countStepRows(value: unknown): number {
   const record = value as Record<string, unknown>;
   return record.recordType === 'step' ? 1 : 0;
 }
+function countMessages(parsed: unknown): number {
+  if (!parsed || typeof parsed !== 'object') {
+    return 0;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.records && Array.isArray(record.records)) {
+    let count = 0;
+    for (const item of record.records) {
+      count += countStepRows(item);
+    }
+    return count;
+  }
+  return countStepRows(parsed);
+}
+
 
 function extractCanonicalUsageSignal(record: Record<string, unknown>, inheritedModel?: string): SignalResult | null {
   if (record.recordType !== 'usage') {
