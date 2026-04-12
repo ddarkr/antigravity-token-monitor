@@ -55,10 +55,15 @@ export class PollLock {
         } catch {}
         return this.tryAcquire();
       }
-    } catch {}
+    } catch {
+      // Lock file is corrupted (non-JSON or read error) — delete it and retry acquire
+      await fs.unlink(this.lockPath).catch(() => {});
+      return this.tryAcquire();
+    }
     return false;
   }
 }
+
 
 function isProcessAlive(pid: number): boolean {
   try {

@@ -3,7 +3,15 @@ import { PersistedSessionState, SessionSnapshot, SessionTotals, TokenBreakdown }
 export class SessionUsageCalculator {
   calculate(previous: PersistedSessionState | undefined, next: SessionTotals, capturedAt: number): SessionSnapshot {
     if (!previous) {
-      return createSnapshot(next, capturedAt, next);
+      // First snapshot: delta is 0, no previous state to compare against
+      return createSnapshot(next, capturedAt, {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+      });
     }
 
     const latest = previous.latest;

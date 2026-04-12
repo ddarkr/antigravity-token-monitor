@@ -61,11 +61,10 @@ export class SnapshotStore {
         activeSessions[sessionId] = session;
       }
 
-      await fs.writeFile(
-        this.getStateFilePath(),
-        JSON.stringify({ lastPollAt: state.lastPollAt, sessions: activeSessions }, null, 2),
-        'utf8'
-      );
+      // Atomic write: use temp file + rename to prevent corruption on crash/disk-full
+      const tmpPath = `${this.getStateFilePath()}.tmp.${Date.now()}`;
+      await fs.writeFile(tmpPath, JSON.stringify({ lastPollAt: state.lastPollAt, sessions: activeSessions }, null, 2), 'utf8');
+      await fs.rename(tmpPath, this.getStateFilePath());
 
       const expectedArchiveFiles = new Set<string>();
       for (const [archiveMonth, sessions] of archivedByMonth) {
@@ -75,11 +74,10 @@ export class SnapshotStore {
       }
 
       const existingArchiveFiles = await this.listArchiveFilePaths(storageDir);
-      await Promise.all(existingArchiveFiles
-        .filter((filePath) => !expectedArchiveFiles.has(filePath))
-        .map(async (filePath) => {
-          await fs.unlink(filePath);
-        }));
+      // Sequential deletion: continue even if some fail
+      for (const filePath of existingArchiveFiles.filter((filePath) => !expectedArchiveFiles.has(filePath))) {
+        await fs.unlink(filePath).catch((err) => console.warn(`[Store] Failed to delete ${filePath}:`, err));
+      }
     } finally {
       this.saveLock = false;
     }

@@ -25,7 +25,7 @@ export class SessionScanner {
 
       const sessionId = entry.name;
       const sessionDir = path.join(brainDir, sessionId);
-      const collected = await collectFiles(sessionDir);
+      const collected = await collectFiles(sessionDir, sessionRoot);
       if (!collected.ok) {
         return { sessions: [], complete: false, error: collected.error ?? `Failed to read ${sessionDir}` };
       }
@@ -71,7 +71,7 @@ export class SessionScanner {
   }
 }
 
-async function collectFiles(dirPath: string): Promise<{ ok: true; files: string[] } | { ok: false; error?: string }> {
+async function collectFiles(dirPath: string, sessionRoot: string): Promise<{ ok: true; files: string[] } | { ok: false; error?: string }> {
   const files: string[] = [];
   const entries = await safeReadDir(dirPath);
   if (!entries.ok) {
@@ -85,7 +85,16 @@ async function collectFiles(dirPath: string): Promise<{ ok: true; files: string[
 
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) {
-      const nested = await collectFiles(fullPath);
+      // Security: validate symlink doesn't escape sessionRoot
+      try {
+        const realPath = await fs.realpath(fullPath);
+        if (!realPath.startsWith(sessionRoot)) {
+          console.warn(`[Scanner] Symlink escapes sessionRoot: ${fullPath} -> ${realPath}`);
+          continue;
+        }
+      } catch {}
+
+      const nested = await collectFiles(fullPath, sessionRoot);
       if (!nested.ok) {
         return nested;
       }
@@ -93,6 +102,15 @@ async function collectFiles(dirPath: string): Promise<{ ok: true; files: string[
       files.push(...nested.files);
       continue;
     }
+
+    // Security: validate symlink doesn't escape sessionRoot for files too
+    try {
+      const realPath = await fs.realpath(fullPath);
+      if (!realPath.startsWith(sessionRoot)) {
+        console.warn(`[Scanner] Symlink escapes sessionRoot: ${fullPath} -> ${realPath}`);
+        continue;
+      }
+    } catch {}
 
     files.push(fullPath);
   }

@@ -64,10 +64,12 @@ export class AntigravityRpcClient {
     for (const connection of await this.getConnectionsForSession(sessionId)) {
       try {
         const result = await this.request('GetCascadeTrajectory', { cascadeId: sessionId }, connection);
-        if (Array.isArray(result.trajectory?.steps)) {
+        if (Array.isArray(result?.trajectory?.steps)) {
           return result.trajectory.steps;
         }
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log?.(`AntigravityRpcClient: getTrajectorySteps failed for ${sessionId} on pid=${connection.pid}: ${message}`);
       }
 
       try {
@@ -76,15 +78,16 @@ export class AntigravityRpcClient {
           startIndex: 0,
           endIndex: 10000
         }, connection);
-        return Array.isArray(fallback.steps)
-          ? fallback.steps
-          : Array.isArray(fallback.step)
-            ? fallback.step
-            : [];
-      } catch {
+        if (Array.isArray(fallback?.steps)) return fallback.steps;
+        if (Array.isArray(fallback?.step)) return fallback.step;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log?.(`AntigravityRpcClient: getTrajectorySteps fallback failed for ${sessionId} on pid=${connection.pid}: ${message}`);
       }
     }
 
+    // Return empty array with explicit warning instead of silent data loss
+    this.log?.(`AntigravityRpcClient: getTrajectorySteps exhausted all connections for ${sessionId}`);
     return [];
   }
 

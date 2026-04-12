@@ -12,6 +12,7 @@ import {
   DashboardState,
   PersistedState,
   PersistedSessionState,
+  RpcArtifactManifest,
   SessionLifecycle,
   SessionSnapshot,
   SessionTotals,
@@ -93,6 +94,8 @@ export class TokenMonitorService implements vscode.Disposable {
   async initialize(): Promise<void> {
     this.state = normalizePersistedState(await this.store.load());
     await this.refresh();
+    this.stopTimer();
+    this.stopExportTimer();
     this.startTimer();
     this.startExportTimer();
   }
@@ -272,7 +275,8 @@ export class TokenMonitorService implements vscode.Disposable {
       this.log(`Refresh completed: trackedSessions=${Object.keys(nextSessions).length} capturedAt=${capturedAt}.`);
       await this.store.save(this.state);
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : 'Failed to refresh token data.';
+      const originalError = error instanceof Error ? error : new Error(String(error));
+      this.lastError = sanitizeErrorMessage(originalError.message);
       console.error('[antigravity-token-monitor]', error);
     } finally {
       this.running = false;
@@ -349,6 +353,7 @@ export class TokenMonitorService implements vscode.Disposable {
   }
 
   private startTimer(): void {
+    this.stopTimer(); // Prevent interval accumulation on re-init
     const { pollIntervalMs } = this.configProvider();
     this.timer = setInterval(() => {
       void this.refresh();
@@ -356,6 +361,7 @@ export class TokenMonitorService implements vscode.Disposable {
   }
 
   private startExportTimer(): void {
+    this.stopExportTimer(); // Prevent interval accumulation on re-init
     const { useRpcExport, rpcExportIntervalMs } = this.configProvider();
     if (!useRpcExport) {
       return;
@@ -549,6 +555,20 @@ function totalsOnly(value: SessionTotals | SessionSnapshot) {
   };
 }
 
+
+/**
+ * Sanitizes error messages to prevent internal path/info leakage in UI.
+ */
+function sanitizeErrorMessage(message: string): string {
+  // Remove home directory paths and internal implementation details
+  return message
+    .replace(/\/Users\/[^\/]+/g, '***')
+    .replace(/\/home\/[^\/]+/g, '***')
+    .replace(/\/[a-zA-Z_.-]+\/[a-zA-Z_.-]+\/[a-zA-Z_.-]+/g, '***')
+    .replace(/stack:.*/gi, '')
+    .trim();
+}
+
 function hasPricingBreakdown(latest: SessionTotals): boolean {
   return latest.mode === 'estimated' || latest.modelBreakdowns !== undefined;
 }
@@ -563,22 +583,34 @@ function normalizePersistedState(state: PersistedState): PersistedState {
 }
 
 function normalizePersistedSession(session: PersistedSessionState): PersistedSessionState {
-  const defaultLastSeenAt = session.latest.lastModifiedMs;
+  const defaultLastSeenAt = session.latest && typeof session.latest.lastModifiedMs === 'number'
+    ? session.latest.lastModifiedMs
+    : Date.now();
   return {
     ...session,
+    latest: session.latest ?? {
+      sessionId: 'unknown',
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      lastModifiedMs: defaultLastSeenAt,
+      mode: 'estimated',
+    },
     lifecycle: session.lifecycle
       ? {
           status: session.lifecycle.status,
-          lastSeenAt: session.lifecycle.lastSeenAt,
-          archivedAt: session.lifecycle.archivedAt
+          lastSeenAt: session.lifecycle.lastSeenAt ?? defaultLastSeenAt,
+          archivedAt: session.lifecycle.archivedAt,
         }
       : {
           status: 'active',
-          lastSeenAt: defaultLastSeenAt
-        }
+          lastSeenAt: defaultLastSeenAt,
+        },
   };
 }
-
 function createActiveLifecycle(lastSeenAt: number): SessionLifecycle {
   return {
     status: 'active',

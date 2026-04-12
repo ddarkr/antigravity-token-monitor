@@ -31,6 +31,7 @@ export class DashboardPanel implements vscode.Disposable {
 
       this.panel.webview.html = getWebviewHtml(this.panel.webview, this.extensionUri);
       this.panel.onDidDispose(() => {
+        this.dispose(); // Clean up disposables on panel close
         this.panel = undefined;
         this.ready = false;
         this.lastPostedStateJson = undefined;

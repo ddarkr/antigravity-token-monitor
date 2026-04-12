@@ -124,6 +124,12 @@ export class TrajectoryExporter {
         return await this.client.listTrajectories();
       } catch (error) {
         const message = toErrorMessage(error);
+        const retryAfterMs = extractRetryAfterMs(error);
+        if (retryAfterMs > 0) {
+          this.log?.(`TrajectoryExporter: Rate limited, waiting ${retryAfterMs}ms before retry.`);
+          await sleep(retryAfterMs);
+          continue;
+        }
         this.log?.(`TrajectoryExporter: RPC summary fetch failed on attempt ${attempt}/${MAX_RPC_ATTEMPTS}: ${message}`);
         if (attempt >= MAX_RPC_ATTEMPTS) {
           throw error;
@@ -135,6 +141,7 @@ export class TrajectoryExporter {
 
     return [];
   }
+
 
   private async fetchSessionPayloadWithRetry(sessionId: string): Promise<{ steps: unknown[]; metadata: unknown[] }> {
     for (let attempt = 1; attempt <= MAX_RPC_ATTEMPTS; attempt += 1) {
@@ -469,4 +476,31 @@ function firstString(...values: unknown[]): string | undefined {
     }
   }
   return undefined;
+}
+
+
+/**
+ * Extracts Retry-After milliseconds from an error message if it contains a 429 status code.
+ */
+function extractRetryAfterMs(error: unknown): number {
+  if (error instanceof Error) {
+    // Match patterns like '429' or 'rate limit' in error messages
+    if (error.message.includes('429') || error.message.toLowerCase().includes('rate limit')) {
+      // Try to extract Retry-After header value from the message
+      const match = error.message.match(/retry[- ]?after[=:]?\s*(\d+)/i);
+      if (match) {
+        return parseInt(match[1], 10) * 1000;
+      }
+      // Default to exponential backoff if no explicit value
+      return 5000;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Sleep utility for async retry delays.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
