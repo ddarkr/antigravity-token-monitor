@@ -570,7 +570,7 @@ function sanitizeErrorMessage(message: string): string {
 }
 
 function hasPricingBreakdown(latest: SessionTotals): boolean {
-  return latest.mode === 'estimated' || latest.modelBreakdowns !== undefined;
+  return latest.mode !== 'estimated' && latest.modelBreakdowns !== undefined;
 }
 
 function normalizePersistedState(state: PersistedState): PersistedState {
