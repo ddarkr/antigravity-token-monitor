@@ -4,7 +4,9 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import { SessionScanCandidate, SessionScanResult } from '../types';
 
+
 const EXCLUDED_NAMES = new Set(['.ds_store', 'thumbs.db']);
+const TEXT_EXTENSIONS = new Set(['.json', '.jsonl', '.md', '.txt', '.log', '.yaml', '.yml']);
 
 export class SessionScanner {
   async scan(sessionRoot: string): Promise<SessionScanResult> {
@@ -30,7 +32,11 @@ export class SessionScanner {
         return { sessions: [], complete: false, error: collected.error ?? `Failed to read ${sessionDir}` };
       }
 
-      const filePaths = collected.files;
+      // Only include files with parseable text extensions
+      const filePaths = collected.files.filter((f) => TEXT_EXTENSIONS.has(path.extname(f).toLowerCase()));
+      if (filePaths.length === 0) {
+        continue;
+      }
       const pbPath = path.join(conversationsDir, `${sessionId}.pb`);
       const pbStat = await safeStat(pbPath);
       if (pbStat) {
