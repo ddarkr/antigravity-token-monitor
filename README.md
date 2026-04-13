@@ -98,7 +98,7 @@ All settings are under `antigravity-token-monitor.*` in VS Code settings.
 | `sessionRoot`         | `~/.gemini/antigravity` | Override the Antigravity session root directory       |
 | `pollIntervalMs`      | `60000`                 | How often the extension rescans sessions (ms)         |
 | `historyLimit`        | `120`                   | Max snapshots to keep per session                     |
-| `maxFileBytes`        | `524288`                | Max file size to read during token estimation (bytes) |
+| `maxFileBytes`        | `10485760` (10MB)      | Max file size to read during token estimation (bytes) |
 | `useRpcExport`        | `true`                  | Enable exporting sessions through the internal RPC    |
 | `exportStepsJsonl`    | `false`                 | Also export conversation steps (for debugging)        |
 | `rpcExportIntervalMs` | `300000`                | How often to run background RPC exports (ms)          |
