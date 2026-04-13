@@ -98,14 +98,17 @@ All settings are under `antigravity-token-monitor.*` in VS Code settings.
 | `sessionRoot`         | `~/.gemini/antigravity` | Override the Antigravity session root directory       |
 | `pollIntervalMs`      | `60000`                 | How often the extension rescans sessions (ms)         |
 | `historyLimit`        | `120`                   | Max snapshots to keep per session                     |
-| `maxFileBytes`        | `10485760` (10MB)      | Max file size to read during token estimation (bytes) |
-| `useRpcExport`        | `true`                  | Enable exporting sessions through the internal RPC    |
-| `exportStepsJsonl`    | `false`                 | Also export conversation steps (for debugging)        |
-| `rpcExportIntervalMs` | `300000`                | How often to run background RPC exports (ms)          |
-| `rpcTimeoutMs`        | `5000`                  | Timeout for internal RPC requests (ms)                |
+MS:| `maxFileBytes`        | `10485760` (10MB)      | Max file size to read during token estimation (bytes) |
+WR:| `useRpcExport`        | `true`                  | Enable exporting sessions through the internal RPC    |
+BS:| `exportStepsJsonl`    | `false`                 | Also export conversation steps (for debugging)        |
+NR:| `rpcExportIntervalMs` | `300000`                | How often to run background RPC exports (ms)          |
+SK:| `rpcTimeoutMs`        | `5000`                  | Timeout for internal RPC requests (ms)                |
+
+## Troubleshooting
+
+See [docs/ISSUES.md](docs/ISSUES.md) for known issues and solutions.
 
 ---
-
 ## Architecture
 
 The extension follows a layered pipeline architecture:
