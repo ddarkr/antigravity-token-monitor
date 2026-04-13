@@ -22,10 +22,10 @@ export class AntigravitySessionParser {
     const reported: TokenBreakdown = emptyBreakdown();
     const modelTotals: Record<string, number> = {};
     const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
-    let evidenceCount = 0;
     let messageCount = 0;
+    let evidenceCount = 0;
     let estimatedText = '';
-
+    console.warn(`[DEBUG] parse: tokenFilePaths=${candidate.tokenFilePaths?.join(' | ')}`);
     for (const filePath of candidate.tokenFilePaths) {
       const parsed = await this.readFileContent(filePath);
       if (!parsed) {
@@ -55,9 +55,8 @@ export class AntigravitySessionParser {
     }
 
     const label = await this.resolveLabel(candidate);
-    return evidenceCount > 0
-      ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount)
-      : finalizeEstimated(candidate, label, estimatedText, messageCount);
+    console.warn(`[DEBUG] parse result: evidenceCount=${evidenceCount} mode=${evidenceCount > 0 ? 'reported' : 'estimated'}`);
+    return evidenceCount > 0 ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount) : finalizeEstimated(candidate, label, estimatedText, messageCount);
   }
 
   private async resolveLabel(candidate: SessionParsePlan): Promise<string> {
@@ -85,6 +84,7 @@ export class AntigravitySessionParser {
 
     try {
       const stat = await fs.stat(filePath);
+      console.warn(`[DEBUG] readFileContent: ${filePath} size=${stat.size} max=${this.maxFileBytes} skip=${stat.size > this.maxFileBytes}`);
       if (stat.size > this.maxFileBytes) {
         return null;
       }

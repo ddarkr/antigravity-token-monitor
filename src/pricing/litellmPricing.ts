@@ -206,7 +206,7 @@ function buildModelAliases(model: string): string[] {
   }
 
   const aliases = new Set<string>([normalized]);
-  const trimmedQuality = normalized.replace(/-(high|low)$/u, '');
+  const trimmedQuality = normalized.replace(/-(high|low|c)$/u, '');
   aliases.add(trimmedQuality);
   aliases.add(trimmedQuality.replace(/-(thinking|medium)$/u, ''));
 

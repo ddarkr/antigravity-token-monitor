@@ -243,7 +243,7 @@ export class TokenMonitorService implements vscode.Disposable {
             };
             continue;
           }
-
+          this.log(`DEBUG: maxFileBytes=${config.maxFileBytes} parsePlan.tokenFilePaths=${parsePlan.tokenFilePaths?.join(', ')}`);
           const latest = await parser.parse(parsePlan);
           const snapshot = this.calculator.calculate(previous, latest, capturedAt);
           this.log(

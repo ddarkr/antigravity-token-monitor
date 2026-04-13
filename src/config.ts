@@ -29,7 +29,7 @@ export function readConfig(): MonitorConfig {
     debug: config.get<boolean>('debug', false),
     pollIntervalMs: validateTimeConfig('pollIntervalMs', config.get<number>('pollIntervalMs', 60000), 60000),
     historyLimit: config.get<number>('historyLimit', 120),
-    maxFileBytes: config.get<number>('maxFileBytes', 524288),
+    maxFileBytes: config.get<number>('maxFileBytes', 10 * 1024 * 1024),  // 10MB default to handle large usage.jsonl files
     useRpcExport: config.get<boolean>('useRpcExport', true),
     exportStepsJsonl: config.get<boolean>('exportStepsJsonl', false),
     rpcExportIntervalMs: validateTimeConfig('rpcExportIntervalMs', config.get<number>('rpcExportIntervalMs', 300000), 300000),

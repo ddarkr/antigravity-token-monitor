@@ -2,7 +2,7 @@
   "name": "antigravity-token-monitor",
   "displayName": "Antigravity Token Monitor",
   "description": "Monitor Antigravity session token usage and review session activity in a dashboard.",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "publisher": "ddarkr",
   "icon": "icon.png",
   "license": "MIT",

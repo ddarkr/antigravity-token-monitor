@@ -84,6 +84,7 @@ describe('litellmPricing', () => {
 
     expect(catalog.resolveModelPricing('gemini-3.1-pro-high')?.input_cost_per_token).toBe(0.00001);
     expect(catalog.resolveModelPricing('gemini-3-flash')?.input_cost_per_token).toBe(0.000001);
+    expect(catalog.resolveModelPricing('gemini-3-flash-c')?.input_cost_per_token).toBe(0.000001);
   });
 
   it('does not resolve ambiguous bare suffix aliases across providers', async () => {
