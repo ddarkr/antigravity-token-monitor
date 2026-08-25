@@ -13,7 +13,7 @@ export function getSidebarHtml(webview: vscode.Webview, extensionUri: vscode.Uri
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
-    <title>Token Overview</title>
+    <title>Token 概览</title>
     <style>
       :root {
         color-scheme: dark light;

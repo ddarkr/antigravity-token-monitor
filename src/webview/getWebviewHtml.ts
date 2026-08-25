@@ -13,7 +13,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
-    <title>Antigravity Token Monitor</title>
+    <title>Antigravity Token 监控仪表盘</title>
     <style>
       :root {
         color-scheme: dark light;

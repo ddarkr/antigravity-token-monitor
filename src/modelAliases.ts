@@ -12,7 +12,10 @@ const PLACEHOLDER_MODEL_MAP: Record<string, string> = {
   'MODEL_PLACEHOLDER_M37': 'gemini-3.1-pro-high',
   'MODEL_PLACEHOLDER_M36': 'gemini-3.1-pro-low',
 
-  // Gemini 3 Flash
+  // Gemini 3.7 Flash & 3 Flash
+  'MODEL_PLACEHOLDER_M298': 'gemini-3.7-flash',
+  'MODEL_PLACEHOLDER_M299': 'gemini-3.7-flash-thinking',
+  'MODEL_PLACEHOLDER_M300': 'gemini-3.7-pro',
   'MODEL_PLACEHOLDER_M18': 'gemini-3-flash',
 
   // Gemini 3 Pro (legacy, redirected to 3.1 Pro)

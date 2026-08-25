@@ -13,7 +13,6 @@
 
   function tick() {
     if (state.lastPollAt && state.config.pollIntervalMs && state.syncStatus === 'idle') {
-      // Reset auto-refresh flag when a new poll result arrives
       if (lastSeenPollAt !== state.lastPollAt) {
         lastSeenPollAt = state.lastPollAt;
         firedAutoRefresh = false;
@@ -25,7 +24,6 @@
       timeRemaining = Math.ceil(remaining / 1000);
       progress = 1 - (remaining / state.config.pollIntervalMs);
 
-      // Trigger auto-refresh when countdown reaches 0
       if (remaining === 0 && !firedAutoRefresh) {
         firedAutoRefresh = true;
         vscodeApi.postMessage({ type: 'dashboard/refresh' });
@@ -33,7 +31,6 @@
     } else {
       timeRemaining = 0;
       progress = 0;
-      // Reset flag when sync is running so next idle cycle can fire again
       if (state.syncStatus === 'running') {
         firedAutoRefresh = false;
       }
@@ -54,70 +51,59 @@
   }
 </script>
 
-<header class="top-bar">
-  <div class="top-bar-content">
-    <div class="brand">
-      <div class="logo-mark" aria-hidden="true"></div>
-      <h1 class="title">Antigravity Token Monitor</h1>
-    </div>
-
-    <div class="actions">
-      {#if state.syncStatus === 'idle' && state.lastPollAt && state.config.pollIntervalMs}
-        <div class="countdown-container" title="Next auto-refresh in {timeRemaining}s">
-          <svg viewBox="0 0 24 24" class="ring-svg">
-            <circle class="ring-bg" cx="12" cy="12" r="10"></circle>
-            <circle class="ring-fg" cx="12" cy="12" r="10" stroke-dasharray="62.83" stroke-dashoffset="{62.83 * (1 - Math.max(0, Math.min(1, progress)))}"></circle>
-          </svg>
-          <div class="countdown-glow"></div>
-          <span class="time-text">{timeRemaining}</span>
-        </div>
-      {/if}
-
-      <div class="status-pill {state.syncStatus}">
-        <span class="status-indicator"></span>
-        {state.syncMessage}
-      </div>
-      <button class="button" on:click={handleRefresh} disabled={state.syncStatus === 'running'}>
-        {state.syncStatus === 'running' ? 'Refreshing...' : 'Refresh'}
-      </button>
-    </div>
+<div class="header-widget">
+  <div class="brand">
+    <div class="logo-mark" aria-hidden="true"></div>
+    <h1 class="title">Antigravity Token 监控仪表盘</h1>
   </div>
-</header>
+
+  <div class="actions">
+    {#if state.syncStatus === 'idle' && state.lastPollAt && state.config.pollIntervalMs}
+      <div class="countdown-container" title="将在 {timeRemaining} 秒后自动刷新">
+        <svg viewBox="0 0 24 24" class="ring-svg">
+          <circle class="ring-bg" cx="12" cy="12" r="10"></circle>
+          <circle class="ring-fg" cx="12" cy="12" r="10" stroke-dasharray="62.83" stroke-dashoffset="{62.83 * (1 - Math.max(0, Math.min(1, progress)))}"></circle>
+        </svg>
+        <div class="countdown-glow"></div>
+        <span class="time-text">{timeRemaining}</span>
+      </div>
+    {/if}
+
+    <div class="status-pill {state.syncStatus}">
+      <span class="status-indicator"></span>
+      {state.syncMessage}
+    </div>
+    <button class="button" on:click={handleRefresh} disabled={state.syncStatus === 'running'}>
+      {state.syncStatus === 'running' ? '正在刷新...' : '立即刷新'}
+    </button>
+  </div>
+</div>
 
 <style>
-  .top-bar {
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--line);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    backdrop-filter: blur(12px) saturate(125%);
-  }
-  .top-bar-content {
-    padding: var(--spacing-sm) var(--spacing-2xl);
+  .header-widget {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1600px;
-    margin: 0 auto;
-    width: 100%;
-    gap: var(--spacing-md);
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-sm);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm, 8px);
+    padding: var(--spacing-sm) var(--spacing-md);
   }
   .brand {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    min-width: 0;
   }
   .logo-mark {
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
     background: var(--accent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   }
   .title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     margin: 0;
     letter-spacing: 0.04em;
@@ -127,18 +113,18 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
   }
   .button {
     border: 1px solid var(--line-strong);
     background: transparent;
     color: var(--text);
     border-radius: 4px;
-    padding: 4px 12px;
-    font-size: 12px;
+    padding: 3px 10px;
+    font-size: 11px;
     cursor: pointer;
     font-weight: 500;
-    min-height: 24px;
+    min-height: 22px;
     transition: all 0.2s ease;
   }
   .button:hover:not(:disabled) {
@@ -153,11 +139,11 @@
   .status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: 5px;
+    padding: 2px 6px;
     border-radius: 4px;
     color: var(--muted);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -171,16 +157,16 @@
   }
   .status-pill.idle .status-indicator {
     background: var(--accent);
-    box-shadow: 0 0 8px rgba(136, 216, 176, 0.4);
+    box-shadow: 0 0 6px rgba(136, 216, 176, 0.4);
   }
   .status-pill.running .status-indicator {
     background: var(--warm);
-    box-shadow: 0 0 8px rgba(247, 200, 115, 0.4);
+    box-shadow: 0 0 6px rgba(247, 200, 115, 0.4);
     animation: pulse 1.5s infinite;
   }
   .status-pill.error .status-indicator {
     background: var(--danger);
-    box-shadow: 0 0 8px rgba(239, 125, 120, 0.4);
+    box-shadow: 0 0 6px rgba(239, 125, 120, 0.4);
   }
   .status-pill.error {
     color: var(--danger);
@@ -195,8 +181,8 @@
   /* Countdown Glow Styles */
   .countdown-container {
     position: relative;
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -219,7 +205,6 @@
     stroke: var(--accent);
     stroke-width: 2;
     stroke-linecap: round;
-    /* Smooth out updates for circular progress */
     transition: stroke-dashoffset 0.1s linear;
   }
   .countdown-glow {
@@ -229,12 +214,12 @@
     border-radius: 50%;
     background: var(--accent);
     opacity: 0.15;
-    filter: blur(4px);
+    filter: blur(3px);
     animation: glow-pulse 2s infinite alternate;
   }
   .time-text {
     position: relative;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     color: var(--accent-strong, #fff);
     font-variant-numeric: tabular-nums;
@@ -245,24 +230,10 @@
     100% { opacity: 0.4; transform: scale(1.1); }
   }
 
-  @media (max-width: 1200px) {
-    .top-bar-content {
-      padding: var(--spacing-sm) var(--spacing-md);
-    }
-  }
-
   @media (max-width: 760px) {
-    .top-bar-content {
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .brand {
+    .header-widget {
+      align-items: flex-start;
       width: 100%;
-      justify-content: center;
-    }
-    .actions {
-      width: 100%;
-      justify-content: center;
     }
   }
 </style>

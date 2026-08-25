@@ -12,7 +12,7 @@
 </script>
 
 <section class="model-usage">
-  <h3 class="section-label">Model Usage</h3>
+  <h3 class="section-label">模型使用量</h3>
 
   {#if visibleModels.length > 0}
     <div class="model-list">
@@ -42,7 +42,7 @@
       <div class="more-label">+{hiddenCount} more model{hiddenCount !== 1 ? 's' : ''}</div>
     {/if}
   {:else}
-    <div class="empty">No model data yet.</div>
+    <div class="empty">暂无模型数据。</div>
   {/if}
 </section>
 

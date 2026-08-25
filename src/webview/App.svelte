@@ -1,7 +1,7 @@
 <script lang="ts">
   import { dashboardState } from './lib/dashboardStore';
-  import { deriveDashboardInsights } from './lib/deriveDashboardInsights';
-  import HeaderBar from './components/HeaderBar.svelte';
+  import { deriveDashboardInsights, type DateFilterOption } from './lib/deriveDashboardInsights';
+  import DateFilterBar from './components/DateFilterBar.svelte';
   import KpiStrip from './components/KpiStrip.svelte';
   import SessionLeaderboard from './components/SessionLeaderboard.svelte';
   import ActivityHeatmap from './components/ActivityHeatmap.svelte';
@@ -12,16 +12,22 @@
   import Configuration from './components/Configuration.svelte';
   import AboutMetrics from './components/AboutMetrics.svelte';
 
-  $: insights = $dashboardState ? deriveDashboardInsights($dashboardState) : null;
+  let dateFilter: DateFilterOption = { range: 'all' };
+
+  $: insights = $dashboardState ? deriveDashboardInsights($dashboardState, dateFilter) : null;
+
+  function handleFilterChange(e: CustomEvent<DateFilterOption>) {
+    dateFilter = e.detail;
+  }
 </script>
 
 {#if insights}
   <div class="shell">
-    <HeaderBar state={insights} />
-
     <main class="main-content">
+      <DateFilterBar on:change={handleFilterChange} />
+
       <section aria-label="Overview Hero" class="hero-region">
-        <KpiStrip summary={insights.summary} pricing={insights.pricing} />
+        <KpiStrip state={insights} />
       </section>
 
       <div class="dashboard-grid">
@@ -48,7 +54,7 @@
     </main>
   </div>
 {:else}
-  <div class="loading">Waiting for dashboard state...</div>
+  <div class="loading">正在加载仪表盘数据...</div>
 {/if}
 
 <style>
@@ -60,7 +66,7 @@
     animation: fade-in 220ms ease;
   }
   .main-content {
-    padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-2xl);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);

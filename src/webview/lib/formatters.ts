@@ -34,27 +34,27 @@ export function formatDate(timestamp: number): string {
 export function formatRelative(timestamp: number, now: number = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
   if (seconds < 60) {
-    return `${seconds}s ago`;
+    return `${seconds}秒前`;
   }
   if (seconds < 3600) {
-    return `${Math.round(seconds / 60)}m ago`;
+    return `${Math.round(seconds / 60)}分钟前`;
   }
   if (seconds < 86400) {
-    return `${Math.round(seconds / 3600)}h ago`;
+    return `${Math.round(seconds / 3600)}小时前`;
   }
-  return `${Math.round(seconds / 86400)}d ago`;
+  return `${Math.round(seconds / 86400)}天前`;
 }
 
 export function formatSource(source: DashboardState['sessions'][number]['source']): string {
-  return source === 'rpc-artifact' ? 'RPC artifact' : 'Filesystem';
+  return source === 'rpc-artifact' ? 'RPC 产物' : '文件系统';
 }
 
 export function formatExportStatus(status: DashboardState['exportStatus']['status']): string {
   if (status === 'running') {
-    return 'Running';
+    return '导出中';
   }
   if (status === 'error') {
-    return 'Error';
+    return '异常';
   }
-  return 'Idle';
+  return '空闲';
 }

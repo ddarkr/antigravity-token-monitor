@@ -5,6 +5,8 @@
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**[English](readme.md)** | [简体中文](README_zh.md) | [한국어](README_ko.md)
+
 > Monitor Antigravity session token usage and review session activity in a dashboard.
 
 ![Dashboard Preview](docs/screenshot.png)

@@ -9,8 +9,8 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Model Usage</h2>
-    <div class="card-meta">Ranked by total tokens</div>
+    <h2 class="section-title">模型使用分布</h2>
+    <div class="card-meta">按总消耗 Token 降序排列</div>
   </div>
 
   <div class="card-body">
@@ -21,7 +21,7 @@
             <div class="model-info">
               <span class="model-name">{model.model}</span>
               <span class="model-stats">
-                {formatNumber(model.totalTokens)} tokens • {model.sessionCount} sessions
+                {formatNumber(model.totalTokens)} Tokens • {model.sessionCount} 个会话
                 {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
                   • {formatUsd(model.costUsd)}
                 {:else if model.pricingNote}
@@ -36,7 +36,7 @@
         {/each}
       </div>
     {:else}
-      <div class="empty-state">No model usage data available.</div>
+      <div class="empty-state">暂无模型使用数据。</div>
     {/if}
   </div>
 </article>

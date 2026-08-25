@@ -27,12 +27,12 @@
 {#if insights}
   <div class="sidebar-shell">
     <header class="sidebar-header">
-      <h1 class="sidebar-title">Token Overview</h1>
+      <h1 class="sidebar-title">Token 概览</h1>
       <div class="sidebar-actions">
-        <button class="icon-btn" on:click={handleRefresh} title="Refresh Now">
+        <button class="icon-btn" on:click={handleRefresh} title="立即刷新">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949 0 2.044-1.6 3.703-3.588 3.703-1.987 0-3.599-1.659-3.599-3.703C5.069 5.481 6.681 3.822 8.668 3.822c.32 0 .631.047.926.131l-.85.85h2.932V1.87l-.907.906A5.266 5.266 0 008.668 2.12c-2.898 0-5.244 2.421-5.244 5.405 0 2.985 2.346 5.405 5.244 5.405 2.898 0 5.244-2.42 5.244-5.405a5.44 5.44 0 00-.461-2.176v.26z"/></svg>
         </button>
-        <button class="icon-btn" on:click={handleOpenDashboard} title="Open Full Dashboard">
+        <button class="icon-btn" on:click={handleOpenDashboard} title="打开完整仪表盘">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1H6v1H2v12h12v-4h1v4.5l-.5.5h-13l-.5-.5v-13l.5-.5z"/><path d="M15 1.5V8h-1V2.707L7.243 9.465l-.707-.708L13.293 2H8V1h6.5l.5.5z"/></svg>
         </button>
       </div>
@@ -53,7 +53,7 @@
 {:else}
   <div class="loading">
     <div class="loading-spinner"></div>
-    <span>Loading token data...</span>
+    <span>正在加载 Token 数据...</span>
   </div>
 {/if}
 

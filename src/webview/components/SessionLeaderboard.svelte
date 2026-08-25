@@ -10,8 +10,8 @@
 
 <article class="analytical-table-container">
   <div class="table-header">
-    <h2 class="section-title">Session Analysis</h2>
-    <div class="table-meta">Sorted by recent activity</div>
+    <h2 class="section-title">会话明细分析</h2>
+    <div class="table-meta">按最近活跃时间排序</div>
   </div>
 
   <div class="table-scroll-area">
@@ -37,7 +37,7 @@
                     <span>{formatDate(session.lastModifiedMs)}</span>
                     {#if session.status === 'archived'}
                       <span class="dot-separator">•</span>
-                      <span>Last seen {formatDate(session.lastSeenAt)}</span>
+                      <span>最后活跃于 {formatDate(session.lastSeenAt)}</span>
                     {/if}
                   </div>
                 </div>
@@ -74,8 +74,8 @@
         {:else}
           <tr>
             <td colspan="6" class="empty-state">
-              <div class="empty-message">No Antigravity sessions found yet.</div>
-              <div class="empty-submessage">Check the session root and wait for the next poll.</div>
+              <div class="empty-message">暂未发现 Antigravity 会话记录。</div>
+              <div class="empty-submessage">请确认会话目录并在下次同步时查看。</div>
             </td>
           </tr>
         {/if}

@@ -9,17 +9,17 @@
   $: total = Math.max(categorizedTotal, 1);
 
   $: items = [
-    { key: 'input', label: 'Input', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: 'var(--accent)' },
-    { key: 'output', label: 'Output', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: 'var(--accent-strong)' },
-    { key: 'cache', label: 'Cache', tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: '#73b8ff' },
-    { key: 'reasoning', label: 'Reasoning', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: 'var(--warm)' }
+    { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: '#3b82f6' },
+    { key: 'output', label: '输出 (Output)', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: '#10b981' },
+    { key: 'cache', label: '缓存 (Cache)', tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: '#8b5cf6' },
+    { key: 'reasoning', label: '思考推理 (Reasoning)', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: '#f59e0b' }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
 </script>
 
 <section class="token-mix">
-  <h3 class="section-label">Token Breakdown</h3>
+  <h3 class="section-label">Token 构成分布</h3>
 
   <div class="stacked-bar">
     {#each items as item}
@@ -27,7 +27,7 @@
         <div
           class="segment"
           style="width: {item.pct}%; background: {item.color}"
-          title="{item.label}: {formatCompact(item.tokens)}"
+          title="{item.label}: {formatCompact(item.tokens)} ({formatPct(item.pct)})"
         ></div>
       {/if}
     {/each}

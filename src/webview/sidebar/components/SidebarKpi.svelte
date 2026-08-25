@@ -9,28 +9,28 @@
 <section class="kpi-section">
   <div class="kpi-card primary">
     <div class="kpi-value highlight">{formatCompact(summary.totalTokens)}</div>
-    <div class="kpi-label">Total Tokens</div>
+    <div class="kpi-label">Token 总数</div>
   </div>
 
   <div class="kpi-row">
     <div class="kpi-card">
       <div class="kpi-value">{summary.activeSessionCount}</div>
-      <div class="kpi-label">Active</div>
+      <div class="kpi-label">活跃会话</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-value">{summary.messageCount}</div>
-      <div class="kpi-label">Messages</div>
+      <div class="kpi-label">消息数</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '—'}</div>
-      <div class="kpi-label">Cost</div>
+      <div class="kpi-label">预估费用</div>
     </div>
   </div>
 
   <div class="kpi-meta">
-    {summary.sessionCount} sessions ({summary.archivedSessionCount} archived)
+    共 {summary.sessionCount} 个会话 ({summary.archivedSessionCount} 个已归档)
     {#if summary.estimatedSessionCount > 0}
-      • {summary.estimatedSessionCount} estimated
+      • {summary.estimatedSessionCount} 个估算
     {/if}
   </div>
 </section>

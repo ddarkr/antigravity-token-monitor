@@ -68,7 +68,7 @@ export class ProcessLocator {
 
   private async detectProcesses(): Promise<ProcessCandidate[]> {
     if (os.platform() === 'win32') {
-      return [];
+      return this.detectProcessesWindows();
     }
 
     const allCandidates: ProcessCandidate[] = [];
@@ -85,11 +85,37 @@ export class ProcessLocator {
     return dedupeProcesses(allCandidates);
   }
 
+  private async detectProcessesWindows(): Promise<ProcessCandidate[]> {
+    const psScript = `Get-CimInstance Win32_Process -Filter "Name like '%language_server%'" | Select-Object ProcessId, ParentProcessId, CommandLine | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }`;
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    const stdout = await runCommand(`powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encoded}`);
+    const candidates = parseProcessInfoCandidates(stdout);
+    if (candidates.length > 0) {
+      this.log?.(`ProcessLocator: (Win32) found ${candidates.length} candidate process(es); pids=[${candidates.map(c => c.pid).join(', ')}].`);
+    }
+    return dedupeProcesses(candidates);
+  }
+
   private async getListeningPorts(pid: number): Promise<number[]> {
     const isDarwin = os.platform() === 'darwin';
 
     // 1차 시도: -iTCP -sTCP:LISTEN (정확하지만 IPv6 전용 포트는 누락 가능)
     // 2차 fallback: -i (더 넓게 탐색 — IPv6 *:port 형식도 포함)
+    if (os.platform() === 'win32') {
+      const stdout = await runCommand(`netstat -ano -p tcp`);
+      const ports = new Set<number>();
+      for (const line of stdout.split('\n')) {
+        if (line.includes('LISTENING') && line.trim().endsWith(String(pid))) {
+          const match = line.match(/(?:127\.0\.0\.1|0\.0\.0\.0|\[::\]):(\d+)/);
+          if (match?.[1]) {
+            const p = Number.parseInt(match[1], 10);
+            if (p > 0) ports.add(p);
+          }
+        }
+      }
+      return [...ports].sort((a, b) => a - b);
+    }
+
     const attempts = isDarwin
       ? [
           `lsof -Pan -p ${pid} -iTCP -sTCP:LISTEN`,
@@ -200,9 +226,9 @@ function parsePorts(stdout: string): number[] {
 }
 
 function isAntigravityProcess(command: string): boolean {
-  return /--app_data_dir\s+antigravity\b/i.test(command)
-    || command.toLowerCase().includes('/antigravity/')
-    || command.toLowerCase().includes('\\antigravity\\');
+  return /--app_data_dir\s+antigravity(-ide)?\b/i.test(command)
+    || command.toLowerCase().includes('antigravity')
+    || command.toLowerCase().includes('language_server');
 }
 
 function getProcessNames(): string[] {
@@ -218,6 +244,10 @@ function getProcessNames(): string[] {
     return arch === 'arm64'
       ? ['language_server_linux_arm', 'language_server_linux_x64']
       : ['language_server_linux_x64'];
+  }
+
+  if (platform === 'win32') {
+    return ['language_server_windows_x64.exe', 'language_server_windows_arm64.exe', 'language_server'];
   }
 
   return [];

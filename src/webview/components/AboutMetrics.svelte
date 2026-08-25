@@ -3,8 +3,8 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">About Metrics</h2>
-    <div class="card-meta">Data Collection</div>
+    <h2 class="section-title">指标说明</h2>
+    <div class="card-meta">数据采集方式</div>
   </div>
 
   <div class="card-body">

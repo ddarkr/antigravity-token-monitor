@@ -12,18 +12,18 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">RPC Coverage</h2>
-    <div class="card-meta">Exported artifact monitoring scope</div>
+    <h2 class="section-title">RPC 覆盖范围</h2>
+    <div class="card-meta">已导出分析产物的覆盖情况</div>
   </div>
 
   <div class="card-body">
     <div class="breakdown-section">
-      <h3 class="subsection-title">Tracking Scope</h3>
+      <h3 class="subsection-title">跟踪范围</h3>
       <div class="breakdown-list">
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-neutral">Tracked Sessions</span>
-            <span class="item-stats">{formatNumber(coverage.trackedSessions)} sessions</span>
+            <span class="item-name tag tag-neutral">已跟踪会话</span>
+            <span class="item-stats">{formatNumber(coverage.trackedSessions)} 个会话</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-neutral" style="width: 100%"></div>
@@ -31,8 +31,8 @@
         </div>
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-active">Changed Sessions</span>
-            <span class="item-stats">{formatNumber(coverage.changedSessions)} sessions</span>
+            <span class="item-name tag tag-active">活跃变动会话</span>
+            <span class="item-stats">{formatNumber(coverage.changedSessions)} 个会话</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-active" style="width: {activeShare}%"></div>
@@ -44,12 +44,12 @@
     <div class="divider"></div>
 
     <div class="breakdown-section">
-      <h3 class="subsection-title">Export Health</h3>
+      <h3 class="subsection-title">导出健康度</h3>
       <div class="breakdown-list">
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-exported">Exported Scope</span>
-            <span class="item-stats">{formatNumber(coverage.exportedSessions)} sessions</span>
+            <span class="item-name tag tag-exported">已导出范围</span>
+            <span class="item-stats">{formatNumber(coverage.exportedSessions)} 个会话</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-exported" style="width: {exportedShare}%"></div>
@@ -57,11 +57,11 @@
         </div>
         <div class="breakdown-item compact-note">
           <div class="note-row">
-            <span>Last export wrote</span>
+            <span>上次导出写入</span>
             <strong>{formatNumber(exportedInLastRun)}</strong>
           </div>
           <div class="note-row">
-            <span>Stable sessions</span>
+            <span>未变动会话</span>
             <strong>{formatNumber(stableSessions)}</strong>
           </div>
         </div>

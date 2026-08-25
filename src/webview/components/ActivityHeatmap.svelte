@@ -25,8 +25,6 @@
     hoveredBin = bin;
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-
-    // Position popover relative to the viewport
     popoverX = rect.left + rect.width / 2;
     popoverY = rect.top;
     popoverVisible = true;
@@ -42,17 +40,45 @@
   function formatDateLabel(dateStr: string): string {
     const [y, m, d] = dateStr.split('-').map(Number);
     const date = new Date(y, m - 1, d);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   }
 
   $: maxTokens = Math.max(...heatmap.map(b => b.totalTokens), 1);
+  $: activeDaysCount = heatmap.filter(b => b.totalTokens > 0).length;
 
-  function getIntensity(tokens: number): number {
-    if (tokens === 0) return 0;
-    return Math.max(0.2, Math.min(1, Math.log(tokens + 1) / Math.log(maxTokens + 1)));
+  // Compute 4-tier quantile distribution so different days are distinctly separated
+  $: quantiles = (() => {
+    const nonZero = heatmap
+      .map(b => b.totalTokens || 0)
+      .filter(t => t > 0)
+      .sort((a, b) => a - b);
+    if (nonZero.length === 0) return { q1: 0, q2: 0, q3: 0 };
+    if (nonZero.length === 1) return { q1: nonZero[0], q2: nonZero[0], q3: nonZero[0] };
+    return {
+      q1: nonZero[Math.max(0, Math.floor(nonZero.length * 0.25))],
+      q2: nonZero[Math.max(0, Math.floor(nonZero.length * 0.50))],
+      q3: nonZero[Math.max(0, Math.floor(nonZero.length * 0.75))]
+    };
+  })();
+
+  function getLevel(tokens: number): number {
+    if (!tokens || tokens <= 0) return 0;
+    if (tokens <= quantiles.q1) return 1;
+    if (tokens <= quantiles.q2) return 2;
+    if (tokens <= quantiles.q3) return 3;
+    return 4;
   }
 
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function getLevelName(level: number): string {
+    if (level === 1) return '轻度使用 (Lv.1)';
+    if (level === 2) return '中度使用 (Lv.2)';
+    if (level === 3) return '高频活跃 (Lv.3)';
+    if (level === 4) return '峰值消耗 (Lv.4)';
+    return '无活动';
+  }
+
+  const dayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+  const monthNamesCn = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
   $: paddedHeatmap = (() => {
     if (!heatmap.length) return [];
@@ -103,8 +129,7 @@
            if (currentMonth !== -1) {
              labels[labels.length - 1].span = span;
            }
-           // avoid duplicate adjacent month labels or very short spans at boundaries
-           labels.push({ name: weekStartDate.toLocaleString('en-US', { month: 'short' }), span: 1 });
+           labels.push({ name: monthNamesCn[m], span: 1 });
            currentMonth = m;
            span = 1;
          } else {
@@ -133,13 +158,16 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token Retention Heatmap</h2>
-    <div class="card-meta">Current tokens distributed by last modified date</div>
+    <div class="header-left">
+      <h2 class="section-title">Token 活跃热力图</h2>
+      <span class="active-badge">近 180 天活跃 {activeDaysCount} 天</span>
+    </div>
+    <div class="card-meta">最近活跃峰值: <strong class="highlight-text">{formatCompact(maxTokens)} Tokens</strong></div>
   </div>
 
   <div class="heatmap-container" bind:this={containerRef}>
     <div class="calendar-container">
-      <div class="months-header" style="grid-template-columns: repeat({columnsCount}, 12px);">
+      <div class="months-header" style="grid-template-columns: repeat({columnsCount}, 15px);">
         {#each monthLabels as label}
            <div class="month-label" style="grid-column: span {label.span};">{label.name}</div>
         {/each}
@@ -148,22 +176,22 @@
       <div class="calendar-body">
         <div class="days-column">
           {#each dayLabels as day, i}
-             <div class="day-label">{i % 2 !== 0 ? day : ''}</div>
+             <div class="day-label">{i === 1 ? '一' : i === 3 ? '三' : i === 5 ? '五' : ''}</div>
           {/each}
         </div>
 
-        <div class="heatmap-grid" style="grid-template-rows: repeat(7, 12px);">
+        <div class="heatmap-grid" style="grid-template-rows: repeat(7, 15px); grid-auto-columns: 15px;">
            {#each paddedHeatmap as bin}
               {#if bin.isEmpty}
                 <div class="cell-empty"></div>
               {:else}
                 {@const tokens = bin.totalTokens || 0}
-                {@const intensity = getIntensity(tokens)}
+                {@const level = getLevel(tokens)}
                 <div
                   role="button"
                   tabindex="0"
-                  class="heatmap-cell"
-                  style="background-color: {tokens > 0 ? `rgba(42, 157, 244, ${intensity})` : 'var(--bg-elevated)'}; border-color: {tokens > 0 ? `rgba(42, 157, 244, ${Math.max(0.2, intensity)})` : 'var(--line)'}"
+                  class="heatmap-cell lvl-{level}"
+                  title="{bin.date}: {tokens > 0 ? formatNumber(tokens) + ' Tokens (' + getLevelName(level) + ')' : '无活跃记录'}"
                   on:mouseenter={(e) => handleCellEnter(e, bin)}
                   on:mouseleave={handleCellLeave}
                 ></div>
@@ -171,9 +199,25 @@
            {/each}
         </div>
       </div>
+
+      <!-- Bottom legend strip -->
+      <div class="heatmap-footer">
+        <span class="footer-hint">鼠标悬停方块查看当日 Token 消耗明细</span>
+        <div class="legend-scale">
+          <span class="scale-text">少</span>
+          <div class="scale-cell lvl-0" title="无消耗 (0)"></div>
+          <div class="scale-cell lvl-1" title="轻度活跃 (1 ~ {formatCompact(quantiles.q1)})"></div>
+          <div class="scale-cell lvl-2" title="中度活跃 ({formatCompact(quantiles.q1)} ~ {formatCompact(quantiles.q2)})"></div>
+          <div class="scale-cell lvl-3" title="高频活跃 ({formatCompact(quantiles.q2)} ~ {formatCompact(quantiles.q3)})"></div>
+          <div class="scale-cell lvl-4" title="峰值消耗 (>{formatCompact(quantiles.q3)})"></div>
+          <span class="scale-text">多</span>
+        </div>
+      </div>
     </div>
 
     {#if popoverVisible && hoveredBin}
+      {@const tokens = hoveredBin.totalTokens || 0}
+      {@const level = getLevel(tokens)}
       <div
         role="tooltip"
         class="heatmap-popover"
@@ -181,46 +225,49 @@
         on:mouseenter={() => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null; } }}
         on:mouseleave={handleCellLeave}
       >
-        <div class="popover-date">{formatDateLabel(hoveredBin.date)}</div>
+        <div class="popover-top">
+          <div class="popover-date">{formatDateLabel(hoveredBin.date)}</div>
+          <span class="popover-badge lvl-{level}">{getLevelName(level)}</span>
+        </div>
         <div class="popover-divider"></div>
 
         <div class="popover-row popover-row--highlight">
-          <span class="popover-label">Tokens Processed</span>
-          <span class="popover-value popover-value--accent">{formatCompact(hoveredBin.totalTokens)}</span>
+          <span class="popover-label">处理 Token 总量</span>
+          <span class="popover-value popover-value--accent">{formatNumber(hoveredBin.totalTokens)}</span>
         </div>
 
         <div class="popover-divider"></div>
 
         <div class="popover-row">
-          <span class="popover-label">Input</span>
+          <span class="popover-label">输入 (Input)</span>
           <span class="popover-value">{formatCompact(hoveredBin.inputTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Output</span>
+          <span class="popover-label">输出 (Output)</span>
           <span class="popover-value">{formatCompact(hoveredBin.outputTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Cache Read</span>
+          <span class="popover-label">缓存读取 (Cache Read)</span>
           <span class="popover-value">{formatCompact(hoveredBin.cacheReadTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Cache Write</span>
+          <span class="popover-label">缓存写入 (Cache Write)</span>
           <span class="popover-value">{formatCompact(hoveredBin.cacheWriteTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Reasoning</span>
+          <span class="popover-label">思考推理 (Reasoning)</span>
           <span class="popover-value">{formatCompact(hoveredBin.reasoningTokens)}</span>
         </div>
 
         <div class="popover-divider"></div>
 
         <div class="popover-row">
-          <span class="popover-label">Cost</span>
+          <span class="popover-label">预估费用</span>
           <span class="popover-value">{hoveredBin.costUsd > 0 ? formatUsd(hoveredBin.costUsd) : '—'}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Messages</span>
-          <span class="popover-value">{hoveredBin.messageCount}</span>
+          <span class="popover-label">会话消息数</span>
+          <span class="popover-value">{hoveredBin.messageCount} 条</span>
         </div>
       </div>
     {/if}
@@ -245,6 +292,11 @@
     align-items: center;
     background: rgba(255, 255, 255, 0.01);
   }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
   .section-title {
     margin: 0;
     font-size: 12px;
@@ -253,17 +305,31 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
+  .active-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(57, 211, 83, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(57, 211, 83, 0.28);
+    font-weight: 600;
+  }
   .card-meta {
     font-size: 11px;
     color: var(--muted);
   }
+  .highlight-text {
+    color: #4ade80;
+    font-weight: 600;
+  }
   .heatmap-container {
-    padding: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-md);
     overflow-x: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--line) transparent;
-    text-align: center;
     position: relative;
+    display: flex;
+    justify-content: center;
   }
   .heatmap-container::-webkit-scrollbar {
     height: 8px;
@@ -276,76 +342,153 @@
   .calendar-container {
     display: inline-flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     min-width: max-content;
     text-align: left;
   }
   .months-header {
-    padding-left: 28px; /* sync with .days-column width + gap */
+    padding-left: 28px;
     display: grid;
-    gap: 3px;
-    height: 14px;
+    gap: 4px;
+    height: 18px;
+    margin-bottom: 2px;
   }
   .month-label {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--muted);
-    line-height: 14px;
+    font-weight: 500;
+    line-height: 18px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .calendar-body {
     display: flex;
-    gap: 4px;
+    gap: 6px;
   }
   .days-column {
     display: grid;
-    grid-template-rows: repeat(7, 12px);
-    gap: 3px;
-    width: 24px;
+    grid-template-rows: repeat(7, 15px);
+    gap: 4px;
+    width: 22px;
     text-align: right;
   }
   .day-label {
-    font-size: 9px;
-    line-height: 12px;
+    font-size: 10px;
+    line-height: 15px;
     color: var(--muted);
+    font-weight: 500;
   }
   .heatmap-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 12px;
-    gap: 3px;
+    grid-auto-columns: 15px;
+    gap: 4px;
   }
   .cell-empty {
-    width: 12px;
-    height: 12px;
+    width: 15px;
+    height: 15px;
   }
   .heatmap-cell {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-    border: 1px solid transparent; /* default transparent to avoid flicker */
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s;
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s, border-color 0.15s;
     cursor: pointer;
   }
   .heatmap-cell:hover {
-    transform: scale(1.35);
+    transform: scale(1.4);
     z-index: 10;
     position: relative;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    border-color: var(--accent-strong) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7) !important;
+    border-color: #ffffff !important;
   }
+
+  /* HIGH-CONTRAST DISTINCT COLOR SCALE */
+  /* Level 0: Inactive / Empty (Clear outline on dark background) */
+  .heatmap-cell.lvl-0 {
+    background-color: rgba(255, 255, 255, 0.045);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  .heatmap-cell.lvl-0:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Level 1: Low Usage (Deep Forest / Teal Green - Dark & Muted) */
+  .heatmap-cell.lvl-1 {
+    background-color: #0d4429;
+    border-color: #1b6a3f;
+  }
+
+  /* Level 2: Medium Usage (Rich Medium Emerald - Clearly Vibrant) */
+  .heatmap-cell.lvl-2 {
+    background-color: #007a3d;
+    border-color: #10b981;
+    box-shadow: 0 0 3px rgba(16, 185, 129, 0.3);
+  }
+
+  /* Level 3: High Usage (Bright Emerald / Jade - Luminous & Strong) */
+  .heatmap-cell.lvl-3 {
+    background-color: #10b981;
+    border-color: #6ee7b7;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  }
+
+  /* Level 4: Peak Usage (Electric Lime / Neon Sunburst - Intense Glow) */
+  .heatmap-cell.lvl-4 {
+    background-color: #39d353;
+    border-color: #a7f3d0;
+    box-shadow: 0 0 12px rgba(57, 211, 83, 0.95), inset 0 0 4px #ffffff;
+  }
+
+  /* Footer & Legend */
+  .heatmap-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--spacing-sm);
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .footer-hint {
+    color: var(--muted);
+  }
+  .legend-scale {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .scale-text {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 0 2px;
+  }
+  .scale-cell {
+    width: 13px;
+    height: 13px;
+    border-radius: 2px;
+    border: 1px solid transparent;
+  }
+  .scale-cell.lvl-0 { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.08); }
+  .scale-cell.lvl-1 { background: #0d4429; border-color: #1b6a3f; }
+  .scale-cell.lvl-2 { background: #007a3d; border-color: #10b981; }
+  .scale-cell.lvl-3 { background: #10b981; border-color: #6ee7b7; box-shadow: 0 0 4px rgba(16, 185, 129, 0.4); }
+  .scale-cell.lvl-4 { background: #39d353; border-color: #a7f3d0; box-shadow: 0 0 8px rgba(57, 211, 83, 0.85); }
 
   /* Popover styles */
   .heatmap-popover {
     position: fixed;
     z-index: 10000;
     transform: translate(-50%, calc(-100% - 10px));
-    min-width: 220px;
+    min-width: 230px;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
     padding: 14px 16px;
     pointer-events: auto;
     animation: popover-in 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -362,45 +505,55 @@
     }
   }
 
+  .popover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
   .popover-date {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 2px;
   }
+  .popover-badge {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .popover-badge.lvl-1 { background: rgba(13, 68, 41, 0.8); color: #86efac; border: 1px solid #1b6a3f; }
+  .popover-badge.lvl-2 { background: rgba(0, 122, 61, 0.8); color: #bbf7d0; border: 1px solid #10b981; }
+  .popover-badge.lvl-3 { background: rgba(16, 185, 129, 0.8); color: #ffffff; border: 1px solid #6ee7b7; }
+  .popover-badge.lvl-4 { background: rgba(57, 211, 83, 0.9); color: #000000; font-weight: 700; border: 1px solid #a7f3d0; }
 
   .popover-divider {
     height: 1px;
     background: var(--line);
-    margin: 10px 0;
+    margin: 8px 0;
   }
-
   .popover-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 3px 0;
+    padding: 2px 0;
   }
-
   .popover-row--highlight {
     padding: 4px 0;
   }
-
   .popover-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
   }
-
   .popover-value {
     font-size: 12px;
     font-weight: 600;
     color: var(--text);
     font-variant-numeric: tabular-nums;
   }
-
   .popover-value--accent {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
-    color: var(--accent-strong, #2a9df4);
+    color: #4ade80;
   }
 </style>

@@ -9,10 +9,10 @@
   $: total = Math.max(categorizedTotal, 1);
 
   $: items = [
-    { key: 'input', label: 'Input', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
-    { key: 'output', label: 'Output', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
-    { key: 'cache', label: 'Cache', tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
-    { key: 'reasoning', label: 'Reasoning', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
+    { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: '#3b82f6' },
+    { key: 'output', label: '输出 (Output)', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: '#10b981' },
+    { key: 'cache', label: '缓存 (Cache)', tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: '#8b5cf6' },
+    { key: 'reasoning', label: '思考推理 (Reasoning)', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: '#f59e0b' }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
@@ -20,34 +20,34 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token Breakdown</h2>
-    <div class="card-meta">Proportional shares</div>
+    <h2 class="section-title">Token 构成占比</h2>
+    <div class="card-meta">各类型 Token 比例分布</div>
   </div>
 
   <div class="card-body">
     <div class="total-display">
       <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
-      <span class="total-label">Total Tokens</span>
+      <span class="total-label">Token 总数</span>
     </div>
 
     <div class="coverage-copy">
-      <span>{formatNumber(categorizedTotal)} categorized</span>
+      <span>已分类 {formatNumber(categorizedTotal)} Tokens</span>
       {#if breakdown.totalTokens !== categorizedTotal}
-        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} of total classified</span>
+        <span>• 占已知分类的 {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)}</span>
       {/if}
     </div>
 
     <div class="stacked-bar">
       {#each items as item}
         {#if item.tokens > 0}
-          <div class="segment {item.key}" style="width: {item.pct}%" title="{item.label}: {formatNumber(item.tokens)}"></div>
+          <div class="segment {item.key}" style="width: {item.pct}%" title="{item.label}: {formatNumber(item.tokens)} ({formatPct(item.pct)})"></div>
         {/if}
       {/each}
     </div>
 
     <div class="legend">
       {#each items as item}
-        <div class="legend-item">
+        <div class="legend-item {item.key}">
           <div class="legend-color {item.key}"></div>
           <div class="legend-info">
             <span class="legend-label">{item.label}</span>
@@ -137,10 +137,16 @@
   .segment:not(:last-child) {
     border-right: 2px solid var(--panel);
   }
-  .input { background: var(--accent); }
-  .output { background: var(--accent-strong); }
-  .reasoning { background: var(--warm); }
-  .cache { background: #73b8ff; }
+
+  /* 4 HIGH-CONTRAST DISTINCT THEME COLORS */
+  /* Input: Vibrant Tech Blue */
+  .segment.input { background: #3b82f6; }
+  /* Output: Luminous Emerald Green */
+  .segment.output { background: #10b981; }
+  /* Cache: Electric Purple / Violet */
+  .segment.cache { background: #8b5cf6; }
+  /* Reasoning: Radiant Amber Gold */
+  .segment.reasoning { background: #f59e0b; }
 
   .legend {
     display: grid;
@@ -151,11 +157,20 @@
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     background: rgba(255, 255, 255, 0.02);
     border-radius: 8px;
     border: 1px solid var(--surface-line);
+    transition: background 0.15s, border-color 0.15s;
   }
+  .legend-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .legend-item.input:hover { border-color: rgba(59, 130, 246, 0.4); }
+  .legend-item.output:hover { border-color: rgba(16, 185, 129, 0.4); }
+  .legend-item.cache:hover { border-color: rgba(139, 92, 246, 0.4); }
+  .legend-item.reasoning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
   .legend-color {
     width: 14px;
     height: 14px;
@@ -163,6 +178,11 @@
     margin-top: 2px;
     flex-shrink: 0;
   }
+  .legend-color.input { background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+  .legend-color.output { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+  .legend-color.cache { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.5); }
+  .legend-color.reasoning { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+
   .legend-info {
     display: flex;
     flex-direction: column;
@@ -177,7 +197,7 @@
   }
   .legend-value {
     font-size: 14px;
-    font-weight: 400;
+    font-weight: 500;
     color: var(--text);
     font-family: var(--code-font);
   }

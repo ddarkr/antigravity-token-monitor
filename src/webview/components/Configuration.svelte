@@ -6,33 +6,33 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Configuration</h2>
-    <div class="card-meta">Workspace Settings</div>
+    <h2 class="section-title">插件配置</h2>
+    <div class="card-meta">工作区配置详情</div>
   </div>
 
   <div class="card-body">
     <div class="config-card">
       <div class="config-item">
-        <div class="config-label">Session Root</div>
+        <div class="config-label">会话根目录</div>
         <div class="config-value mono" title={state.rootPath}>{state.rootPath}</div>
       </div>
 
       <div class="config-item">
-        <div class="config-label">RPC Export</div>
-        <div class="config-value">{state.config.useRpcExport ? 'Enabled' : 'Disabled'}</div>
+        <div class="config-label">RPC 导出</div>
+        <div class="config-value">{state.config.useRpcExport ? '已启用' : '已禁用'}</div>
       </div>
 
       <div class="config-item">
-        <div class="config-label">Step Export</div>
-        <div class="config-value">{state.config.exportStepsJsonl ? 'Enabled' : 'Disabled'}</div>
+        <div class="config-label">步骤文本导出</div>
+        <div class="config-value">{state.config.exportStepsJsonl ? '已启用' : '已禁用'}</div>
       </div>
     </div>
 
     {#if !state.config.exportStepsJsonl}
       <div class="info-card" role="status" aria-live="polite">
-        <div class="info-title">Step export: metadata only</div>
+        <div class="info-title">步骤导出：仅元数据</div>
         <div class="info-copy">
-          `exportStepsJsonl` is off — steps are exported with metadata only (role, timestamp, model). Message counts work normally. Enable to include full conversation text.
+          `exportStepsJsonl` 当前处于关闭状态 — 仅导出步骤元数据（角色、时间戳、模型）。消息计数正常工作。启用后可包含完整对话内容。
         </div>
       </div>
     {/if}
