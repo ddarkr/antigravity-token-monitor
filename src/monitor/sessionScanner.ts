@@ -7,6 +7,12 @@ import { SessionScanCandidate, SessionScanResult } from '../types';
 const EXCLUDED_NAMES = new Set(['.ds_store', 'thumbs.db']);
 const TEXT_EXTENSIONS = new Set(['.json', '.jsonl', '.md', '.txt', '.log', '.yaml', '.yml']);
 
+function normalizeFsPath(p: string): string {
+  let normalized = path.resolve(p).toLowerCase();
+  normalized = normalized.replace(/^\\\?\\/, '').replace(/^\\\?/, '');
+  return normalized.replace(/[\\/]+/g, '/').replace(/\/+$/, '');
+}
+
 export class SessionScanner {
   async scan(sessionRootOrRoots: string | string[]): Promise<SessionScanResult> {
     const roots = Array.isArray(sessionRootOrRoots) ? sessionRootOrRoots : [sessionRootOrRoots];
@@ -100,20 +106,20 @@ async function collectFiles(dirPath: string, sessionRoot: string): Promise<{ ok:
     if (entry.isDirectory()) {
       try {
         const realPath = await fs.realpath(fullPath);
-        if (!realPath.toLowerCase().startsWith(sessionRoot.toLowerCase())) {
+        const normReal = normalizeFsPath(realPath);
+        const normRoot = normalizeFsPath(sessionRoot);
+        if (!normReal.startsWith(normRoot)) {
           console.warn(`[Scanner] Symlink escapes sessionRoot: ${fullPath} -> ${realPath}`);
           continue;
         }
       } catch {
-        continue;
+        // Proceed on realpath error
       }
 
       const nested = await collectFiles(fullPath, sessionRoot);
-      if (!nested.ok) {
-        return nested;
+      if (nested.ok) {
+        files.push(...nested.files);
       }
-
-      files.push(...nested.files);
       continue;
     }
 
