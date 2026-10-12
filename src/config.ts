@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -17,7 +18,15 @@ export type MonitorConfig = {
 };
 
 export function getDefaultSessionRoot(): string {
-  return path.join(os.homedir(), '.gemini', 'antigravity');
+  const defaultPath = path.join(os.homedir(), '.gemini', 'antigravity');
+  const idePath = path.join(os.homedir(), '.gemini', 'antigravity-ide');
+  try {
+    if (!fs.existsSync(defaultPath) && fs.existsSync(idePath)) {
+      return idePath;
+    }
+  } catch {
+  }
+  return defaultPath;
 }
 
 export function readConfig(): MonitorConfig {

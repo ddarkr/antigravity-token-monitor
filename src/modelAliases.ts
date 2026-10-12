@@ -14,6 +14,7 @@ const PLACEHOLDER_MODEL_MAP: Record<string, string> = {
 
   // Gemini 3 Flash
   'MODEL_PLACEHOLDER_M18': 'gemini-3-flash',
+  'MODEL_PLACEHOLDER_M318': 'gemini-3.8-flash-high',
 
   // Gemini 3 Pro (legacy, redirected to 3.1 Pro)
   'MODEL_PLACEHOLDER_M8': 'gemini-3-pro-high',

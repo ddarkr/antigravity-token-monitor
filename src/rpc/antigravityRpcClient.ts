@@ -26,27 +26,32 @@ export class AntigravityRpcClient {
     const merged = new Map<string, { summary: TrajectorySummary; connection: RpcConnectionInfo }>();
 
     for (const connection of connections) {
-      const response = await this.request('GetAllCascadeTrajectories', {}, connection);
-      const rawSummaries = response.trajectorySummaries;
-      const items: unknown[] = Array.isArray(rawSummaries)
-        ? rawSummaries
-        : rawSummaries && typeof rawSummaries === 'object'
-          ? Object.entries(rawSummaries).map(([key, value]) => ({ ...(value as object), cascadeId: key }))
-          : Array.isArray(response.cascadeTrajectories)
-            ? response.cascadeTrajectories
-            : [];
+      try {
+        const response = await this.request('GetAllCascadeTrajectories', {}, connection);
+        const rawSummaries = response.trajectorySummaries;
+        const items: unknown[] = Array.isArray(rawSummaries)
+          ? rawSummaries
+          : rawSummaries && typeof rawSummaries === 'object'
+            ? Object.entries(rawSummaries).map(([key, value]) => ({ ...(value as object), cascadeId: key }))
+            : Array.isArray(response.cascadeTrajectories)
+              ? response.cascadeTrajectories
+              : [];
 
-      const summaries = items
-        .map((item) => normalizeSummary(item))
-        .filter((item): item is TrajectorySummary => item !== null);
+        const summaries = items
+          .map((item) => normalizeSummary(item))
+          .filter((item): item is TrajectorySummary => item !== null);
 
-      this.log?.(`AntigravityRpcClient: pid=${connection.pid} port=${connection.port} listTrajectories returned ${summaries.length} item(s).`);
+        this.log?.(`AntigravityRpcClient: pid=${connection.pid} port=${connection.port} listTrajectories returned ${summaries.length} item(s).`);
 
-      for (const summary of summaries) {
-        const existing = merged.get(summary.sessionId);
-        if (!existing || isBetterSummary(summary, existing.summary)) {
-          merged.set(summary.sessionId, { summary, connection });
+        for (const summary of summaries) {
+          const existing = merged.get(summary.sessionId);
+          if (!existing || isBetterSummary(summary, existing.summary)) {
+            merged.set(summary.sessionId, { summary, connection });
+          }
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log?.(`AntigravityRpcClient: pid=${connection.pid} port=${connection.port} listTrajectories failed: ${message}`);
       }
     }
 
@@ -192,7 +197,7 @@ export class AntigravityRpcClient {
       return connections;
     }
 
-    return [preferred, ...connections.filter((connection) => connection.pid !== preferred.pid || connection.port !== preferred.port)];
+    return [preferred];
   }
 
   /** 캐시된 연결 정보를 초기화하여 다음 요청 시 재탐지하도록 강제 */

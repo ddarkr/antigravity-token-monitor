@@ -160,6 +160,35 @@ describe('TrajectoryExporter', () => {
     expect(failedManifest?.failureCount).toBe(1);
     expect(failedManifest?.lastError).toBe('session-1 failed second');
   });
+
+  it('skips RPC export for candidates not present in language server summaries', async () => {
+    const logs: string[] = [];
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-exporter-'));
+    const artifactStore = new RpcArtifactStore(sessionRoot);
+
+    vi.spyOn(AntigravityRpcClient.prototype, 'flush').mockResolvedValue();
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'active-session', lastModifiedMs: 123, stepCount: 1 }
+    ]);
+    const stepsSpy = vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectorySteps').mockResolvedValue([{ id: 'step-1' }]);
+    const metadataSpy = vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectoryMetadata').mockResolvedValue([
+      { responseModel: 'gemini-2.5-pro', chatModel: { usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 } } }
+    ]);
+
+    const exporter = exporterFor(sessionRoot, artifactStore, logs);
+    const result = await exporter.exportChangedSessions([
+      buildCandidate(sessionRoot, 'active-session', 123),
+      buildCandidate(sessionRoot, 'offline-session', 456)
+    ]);
+
+    expect(stepsSpy).toHaveBeenCalledTimes(1);
+    expect(stepsSpy).toHaveBeenCalledWith('active-session');
+    expect(metadataSpy).toHaveBeenCalledTimes(1);
+    expect(metadataSpy).toHaveBeenCalledWith('active-session');
+    expect(result.exportedCount).toBe(1);
+    expect(result.manifests.has('active-session')).toBe(true);
+    expect(result.manifests.has('offline-session')).toBe(false);
+  });
 });
 
 function exporterFor(sessionRoot: string, artifactStore: RpcArtifactStore, logs: string[]): TrajectoryExporter {
