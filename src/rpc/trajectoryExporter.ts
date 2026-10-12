@@ -38,27 +38,24 @@ export class TrajectoryExporter {
       const summaries = await this.fetchSummariesWithRetry();
       this.log?.(`RPC summaries fetched: ${summaries.length}. Scanner candidates: ${candidates.length}.`);
       const summaryById = new Map(summaries.map((summary) => [summary.sessionId, summary]));
-      let unmatchedCount = 0;
-
       for (const candidate of candidates) {
-        let summary = summaryById.get(candidate.sessionId);
+        const previous = await this.artifactStore.loadManifest(candidate.sessionId);
+        const summary = summaryById.get(candidate.sessionId);
+
         if (!summary) {
-          unmatchedCount += 1;
-          // 목록에서 누락된 경우, 파일 시스템의 메타데이터를 기반으로 강제 조회 시도 (Fallback)
-          summary = {
-            sessionId: candidate.sessionId,
-            lastModifiedMs: candidate.lastModifiedMs,
-            stepCount: undefined
-          };
+          // Session is offline/historical (not in language server memory).
+          // Reuse cached manifest if available; otherwise filesystem parser handles it.
+          if (previous) {
+            manifests.set(candidate.sessionId, previous);
+          }
+          continue;
         }
 
-        const previous = await this.artifactStore.loadManifest(candidate.sessionId);
         const force = options?.force === true;
         const selectiveForce = options?.selectiveForce === true;
         const shouldForceThisSession = force || (
           selectiveForce && (
-            summaryById.has(candidate.sessionId)
-            || !previous?.artifactHash
+            !previous?.artifactHash
             || (previous?.failureCount ?? 0) > 0
           )
         );
@@ -95,12 +92,6 @@ export class TrajectoryExporter {
           this.log?.(`TrajectoryExporter: session=${candidate.sessionId} export failure recorded: ${message}`);
           console.warn(`[antigravity-token-monitor] Failed to export RPC artifacts for ${candidate.sessionId}:`, error);
         }
-      }
-
-      if (unmatchedCount > 0) {
-        this.log?.(
-          `RPC export fallback: Forced direct export for ${unmatchedCount} candidate(s) not found in RPC summaries.`
-        );
       }
 
       this.log?.(`RPC export processed ${candidates.length} scanner candidates; wrote ${exportedCount} artifact set(s).`);

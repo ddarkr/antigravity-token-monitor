@@ -10,6 +10,7 @@ const TEXT_EXTENSIONS = new Set(['.json', '.jsonl', '.md', '.txt', '.log', '.yam
 
 export class SessionScanner {
   async scan(sessionRoot: string): Promise<SessionScanResult> {
+    const realSessionRoot = await safeRealpath(sessionRoot);
     const brainDir = path.join(sessionRoot, 'brain');
     const conversationsDir = path.join(sessionRoot, 'conversations');
 
@@ -27,7 +28,7 @@ export class SessionScanner {
 
       const sessionId = entry.name;
       const sessionDir = path.join(brainDir, sessionId);
-      const collected = await collectFiles(sessionDir, sessionRoot);
+      const collected = await collectFiles(sessionDir, realSessionRoot);
       if (!collected.ok) {
         return { sessions: [], complete: false, error: collected.error ?? `Failed to read ${sessionDir}` };
       }
@@ -77,7 +78,7 @@ export class SessionScanner {
   }
 }
 
-async function collectFiles(dirPath: string, sessionRoot: string): Promise<{ ok: true; files: string[] } | { ok: false; error?: string }> {
+async function collectFiles(dirPath: string, realSessionRoot: string): Promise<{ ok: true; files: string[] } | { ok: false; error?: string }> {
   const files: string[] = [];
   const entries = await safeReadDir(dirPath);
   if (!entries.ok) {
@@ -90,17 +91,14 @@ async function collectFiles(dirPath: string, sessionRoot: string): Promise<{ ok:
     }
 
     const fullPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      // Security: validate symlink doesn't escape sessionRoot
-      try {
-        const realPath = await fs.realpath(fullPath);
-        if (!realPath.startsWith(sessionRoot)) {
-          console.warn(`[Scanner] Symlink escapes sessionRoot: ${fullPath} -> ${realPath}`);
-          continue;
-        }
-      } catch {}
+    const realPath = await safeRealpath(fullPath);
+    if (isPathEscaping(realSessionRoot, realPath)) {
+      console.warn(`[Scanner] Path escapes sessionRoot: ${fullPath} -> ${realPath}`);
+      continue;
+    }
 
-      const nested = await collectFiles(fullPath, sessionRoot);
+    if (entry.isDirectory()) {
+      const nested = await collectFiles(fullPath, realSessionRoot);
       if (!nested.ok) {
         return nested;
       }
@@ -109,19 +107,23 @@ async function collectFiles(dirPath: string, sessionRoot: string): Promise<{ ok:
       continue;
     }
 
-    // Security: validate symlink doesn't escape sessionRoot for files too
-    try {
-      const realPath = await fs.realpath(fullPath);
-      if (!realPath.startsWith(sessionRoot)) {
-        console.warn(`[Scanner] Symlink escapes sessionRoot: ${fullPath} -> ${realPath}`);
-        continue;
-      }
-    } catch {}
-
     files.push(fullPath);
   }
 
   return { ok: true, files };
+}
+
+function isPathEscaping(basePath: string, targetPath: string): boolean {
+  const relative = path.relative(basePath, targetPath);
+  return relative.startsWith('..') || path.isAbsolute(relative);
+}
+
+async function safeRealpath(targetPath: string): Promise<string> {
+  try {
+    return await fs.realpath(targetPath);
+  } catch {
+    return path.resolve(targetPath);
+  }
 }
 
 async function safeReadDir(dirPath: string): Promise<{ ok: true; entries: Dirent[] } | { ok: false; error?: string }> {
