@@ -1,4 +1,4 @@
-import * as https from 'https';
+import * as http from 'http';
 import { MonitorConfig } from '../config';
 import { ProcessLocator, RpcConnectionInfo } from './processLocator';
 
@@ -122,7 +122,7 @@ export class AntigravityRpcClient {
     const resolvedConnection = connection ?? await this.ensureConnection();
     const requestBody = JSON.stringify(body);
     return new Promise((resolve, reject) => {
-      const request = https.request({
+      const request = http.request({
         hostname: '127.0.0.1',
         port: resolvedConnection.port,
         path: `/exa.language_server_pb.LanguageServerService/${method}`,
@@ -133,7 +133,6 @@ export class AntigravityRpcClient {
           'Connect-Protocol-Version': '1',
           'X-Codeium-Csrf-Token': resolvedConnection.csrfToken
         },
-        rejectUnauthorized: false,
         timeout: this.config.rpcTimeoutMs
       }, (response) => {
         const chunks: Buffer[] = [];

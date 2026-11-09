@@ -103,6 +103,8 @@ export type DashboardSession = {
   latestDelta: TokenBreakdown;
   recentTotals: number[];
   snapshotCount: number;
+  modelTotals?: Record<string, number>;
+  modelBreakdowns?: Record<string, ModelTokenBreakdown>;
 };
 
 export type ActivityHeatmapBin = {

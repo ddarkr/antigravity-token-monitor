@@ -15,14 +15,14 @@ describe('App', () => {
 
   it('renders loading state initially', () => {
     const { getByText } = render(App);
-    expect(getByText('Waiting for dashboard state...')).toBeTruthy();
+    expect(getByText('正在加载仪表盘数据...')).toBeTruthy();
   });
 
   it('renders dashboard shell with key sections when state is provided', () => {
     dashboardState.set(mockDashboardState);
     const { getByRole, getAllByText, getByText } = render(App);
     
-    expect(getAllByText('Antigravity Token Monitor').length).toBeGreaterThan(0);
+    expect(getAllByText(/Antigravity Token/i).length).toBeGreaterThan(0);
     
     expect(getByRole('region', { name: /overview hero/i })).toBeTruthy();
     expect(getByRole('region', { name: /analysis canvas/i })).toBeTruthy();

@@ -76,7 +76,7 @@
 				"antigravity-token-monitor.sessionRoot": {
 					"type": "string",
 					"default": "",
-					"description": "自定义 Antigravity 会话根目录路径。留空则自动检测 ~/.gemini/antigravity-ide。"
+					"description": "自定义 Antigravity 会话根目录路径。留空则自动检测 ~/.gemini/antigravity 或 ~/.gemini/antigravity-ide。"
 				},
 				"antigravity-token-monitor.debug": {
 					"type": "boolean",

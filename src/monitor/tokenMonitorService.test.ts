@@ -211,6 +211,7 @@ function createService(options: {
 function buildConfig(sessionRoot: string): MonitorConfig {
   return {
     sessionRoot,
+    sessionRoots: [sessionRoot],
     debug: false,
     pollIntervalMs: 60_000,
     historyLimit: 120,

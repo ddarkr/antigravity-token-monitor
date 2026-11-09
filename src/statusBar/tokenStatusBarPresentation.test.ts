@@ -7,13 +7,13 @@ describe('buildTokenStatusBarPresentation', () => {
     const presentation = buildTokenStatusBarPresentation(mockDashboardState);
 
     expect(presentation).toEqual({
-      text: '$(graph) 600 tokens 🔥',
+      text: '$(graph) 600 Tokens 🔥',
       tooltip: [
-        'Total tokens: 600',
-        'Sessions: 2 sessions',
-        'Recent activity: 1 changed session',
-        'Sync: Synced',
-        'Click to open dashboard'
+        'Token 总计: 600',
+        '会话总数: 2 个会话',
+        '最近变动: 1 个活跃会话',
+        '同步状态: Synced',
+        '点击打开完整仪表盘'
       ].join('\n'),
       isError: false
     });
@@ -26,8 +26,8 @@ describe('buildTokenStatusBarPresentation', () => {
       syncMessage: 'Refreshing token data...'
     });
 
-    expect(presentation.text).toBe('$(sync~spin) 600 tokens 🔥');
-    expect(presentation.tooltip).toContain('Sync: Refreshing token data...');
+    expect(presentation.text).toBe('$(sync~spin) 600 Tokens 🔥');
+    expect(presentation.tooltip).toContain('同步状态: Refreshing token data...');
     expect(presentation.isError).toBe(false);
   });
 
@@ -38,8 +38,8 @@ describe('buildTokenStatusBarPresentation', () => {
       syncMessage: 'Session scan did not complete.'
     });
 
-    expect(presentation.text).toBe('$(warning) 600 tokens 🔥');
-    expect(presentation.tooltip).toContain('Sync: Session scan did not complete.');
+    expect(presentation.text).toBe('$(warning) 600 Tokens 🔥');
+    expect(presentation.tooltip).toContain('同步状态: Session scan did not complete.');
     expect(presentation.isError).toBe(true);
   });
 
@@ -54,9 +54,9 @@ describe('buildTokenStatusBarPresentation', () => {
       }
     });
 
-    expect(presentation.text).toBe('$(graph) 1.2m tokens 🔥');
-    expect(presentation.tooltip).toContain('Total tokens: 1,234,567');
-    expect(presentation.tooltip).toContain('Sessions: 1 session');
-    expect(presentation.tooltip).toContain('Recent activity: 0 changed sessions');
+    expect(presentation.text).toBe('$(graph) 1.2m Tokens 🔥');
+    expect(presentation.tooltip).toContain('Token 总计: 1,234,567');
+    expect(presentation.tooltip).toContain('会话总数: 1 个会话');
+    expect(presentation.tooltip).toContain('最近变动: 0 个活跃会话');
   });
 });

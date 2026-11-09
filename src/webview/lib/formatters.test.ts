@@ -11,20 +11,20 @@ describe('formatters', () => {
 
   it('formats relative time correctly', () => {
     const now = Date.now();
-    expect(formatRelative(now - 10000)).toBe('10s ago');
-    expect(formatRelative(now - 120000)).toBe('2m ago');
-    expect(formatRelative(now - 7200000)).toBe('2h ago');
-    expect(formatRelative(now - 172800000)).toBe('2d ago');
+    expect(formatRelative(now - 10000)).toBe('10秒前');
+    expect(formatRelative(now - 120000)).toBe('2分钟前');
+    expect(formatRelative(now - 7200000)).toBe('2小时前');
+    expect(formatRelative(now - 172800000)).toBe('2天前');
   });
 
   it('formats source correctly', () => {
-    expect(formatSource('rpc-artifact')).toBe('RPC artifact');
-    expect(formatSource('filesystem')).toBe('Filesystem');
+    expect(formatSource('rpc-artifact')).toBe('RPC 产物');
+    expect(formatSource('filesystem')).toBe('文件系统');
   });
 
   it('formats export status correctly', () => {
-    expect(formatExportStatus('running')).toBe('Running');
-    expect(formatExportStatus('error')).toBe('Error');
-    expect(formatExportStatus('idle')).toBe('Idle');
+    expect(formatExportStatus('running')).toBe('导出中');
+    expect(formatExportStatus('error')).toBe('异常');
+    expect(formatExportStatus('idle')).toBe('空闲');
   });
 });

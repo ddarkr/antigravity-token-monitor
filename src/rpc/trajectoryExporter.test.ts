@@ -169,6 +169,7 @@ function exporterFor(sessionRoot: string, artifactStore: RpcArtifactStore, logs:
 function buildConfig(sessionRoot: string): MonitorConfig {
   return {
     sessionRoot,
+    sessionRoots: [sessionRoot],
     debug: false,
     pollIntervalMs: 60000,
     historyLimit: 120,

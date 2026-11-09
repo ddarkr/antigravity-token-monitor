@@ -1,4 +1,4 @@
-import * as https from 'https';
+import * as http from 'http';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -27,7 +27,6 @@ export class ProcessLocator {
   }
 
   async detectConnections(): Promise<RpcConnectionInfo[]> {
-    // 최대 2회 시도 — 첫 번째 실패 시 프로세스를 다시 탐지
     for (let attempt = 0; attempt < 2; attempt++) {
       const processInfos = await this.detectProcesses();
       if (processInfos.length === 0) {
@@ -40,13 +39,19 @@ export class ProcessLocator {
         this.log?.(
           `ProcessLocator: selected pid=${processInfo.pid} ppid=${processInfo.ppid} declaredPort=${processInfo.extensionPort || 'unknown'} (attempt ${attempt + 1}/2).`
         );
-        const ports = await this.getListeningPorts(processInfo.pid);
-        this.log?.(`ProcessLocator: pid=${processInfo.pid} listening ports=[${ports.join(', ') || 'none'}].`);
-        for (const port of ports) {
+        const declaredPort = processInfo.extensionPort > 0 ? [processInfo.extensionPort] : [];
+        const listeningPorts = await this.getListeningPorts(processInfo.pid);
+        const candidatePorts = [...new Set([...declaredPort, ...listeningPorts])];
+        this.log?.(`ProcessLocator: pid=${processInfo.pid} candidate ports=[${candidatePorts.join(', ') || 'none'}].`);
+        for (const port of candidatePorts) {
           const isReady = await testPort(port, processInfo.csrfToken);
           this.log?.(`ProcessLocator: heartbeat ${isReady ? 'ok' : 'failed'} for pid=${processInfo.pid} port=${port}.`);
           if (isReady) {
-            connections.push({ pid: processInfo.pid, port, csrfToken: processInfo.csrfToken });
+            connections.push({
+              pid: processInfo.pid,
+              port,
+              csrfToken: processInfo.csrfToken
+            });
             break;
           }
         }
@@ -57,7 +62,6 @@ export class ProcessLocator {
         return connections;
       }
 
-      // 포트 탐지 실패 시 잠깐 대기 후 재탐지
       if (attempt < 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -86,7 +90,7 @@ export class ProcessLocator {
   }
 
   private async detectProcessesWindows(): Promise<ProcessCandidate[]> {
-    const psScript = `Get-CimInstance Win32_Process -Filter "Name like '%language_server%'" | Select-Object ProcessId, ParentProcessId, CommandLine | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }`;
+    const psScript = `Get-CimInstance Win32_Process -Filter "Name like '%agy%'" | Select-Object ProcessId, ParentProcessId, CommandLine | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }`;
     const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
     const stdout = await runCommand(`powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encoded}`);
     const candidates = parseProcessInfoCandidates(stdout);
@@ -99,8 +103,6 @@ export class ProcessLocator {
   private async getListeningPorts(pid: number): Promise<number[]> {
     const isDarwin = os.platform() === 'darwin';
 
-    // 1차 시도: -iTCP -sTCP:LISTEN (정확하지만 IPv6 전용 포트는 누락 가능)
-    // 2차 fallback: -i (더 넓게 탐색 — IPv6 *:port 형식도 포함)
     if (os.platform() === 'win32') {
       const stdout = await runCommand(`netstat -ano -p tcp`);
       const ports = new Set<number>();
@@ -174,7 +176,7 @@ function parseProcessInfoCandidates(stdout: string): ProcessCandidate[] {
       continue;
     }
 
-    const portMatch = command.match(/--extension_server_port[=\s]+(\d+)/i);
+    const portMatch = command.match(/--(?:hub[-_]port|extension_server_port)[=\s]+(\d+)/i);
     const tokenMatch = command.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
     if (!tokenMatch?.[1]) {
       continue;
@@ -203,13 +205,9 @@ function parsePorts(stdout: string): number[] {
   const ports = new Set<number>();
   for (const line of stdout.trim().split('\n')) {
     for (const pattern of [
-      // lsof: 127.0.0.1:PORT (LISTEN) 형식
       /127\.0\.0\.1:(\d+).*(?:LISTEN|\(LISTEN\))/i,
-      // lsof: localhost:PORT (LISTEN) 형식
       /localhost:(\d+).*(?:LISTEN|\(LISTEN\))/i,
-      // lsof: *:PORT (LISTEN) 형식 — IPv6 소켓이 IPv4도 수신하는 경우
       /\*:(\d+).*(?:LISTEN|\(LISTEN\))/i,
-      // ss: LISTEN NN NN 127.0.0.1:PORT 또는 *:PORT 형식
       /LISTEN\s+\d+\s+\d+\s+(?:127\.0\.0\.1|\*|::1|::):(\d+)/i
     ]) {
       const match = line.match(pattern);
@@ -226,37 +224,25 @@ function parsePorts(stdout: string): number[] {
 }
 
 function isAntigravityProcess(command: string): boolean {
-  return /--app_data_dir\s+antigravity(-ide)?\b/i.test(command)
-    || command.toLowerCase().includes('antigravity')
-    || command.toLowerCase().includes('language_server');
+  const lower = command.toLowerCase();
+  if (lower.includes('powershell') || lower.includes('wmic') || lower.includes('cmd.exe')) {
+    return false;
+  }
+  return lower.includes('agy') || /--app_data_dir[=\s]+antigravity\b/i.test(command);
 }
 
 function getProcessNames(): string[] {
   const platform = os.platform();
-  const arch = os.arch();
-  if (platform === 'darwin') {
-    return arch === 'arm64'
-      ? ['language_server_macos_arm', 'language_server_macos']
-      : ['language_server_macos'];
-  }
-
-  if (platform === 'linux') {
-    return arch === 'arm64'
-      ? ['language_server_linux_arm', 'language_server_linux_x64']
-      : ['language_server_linux_x64'];
-  }
-
   if (platform === 'win32') {
-    return ['language_server_windows_x64.exe', 'language_server_windows_arm64.exe', 'language_server'];
+    return ['agy.exe', 'agy'];
   }
-
-  return [];
+  return ['agy'];
 }
 
 async function testPort(port: number, csrfToken: string): Promise<boolean> {
   const requestBody = JSON.stringify({ uuid: '00000000-0000-0000-0000-000000000000' });
   return new Promise((resolve) => {
-    const request = https.request({
+    const request = http.request({
       hostname: '127.0.0.1',
       port,
       path: '/exa.language_server_pb.LanguageServerService/Heartbeat',
@@ -267,8 +253,7 @@ async function testPort(port: number, csrfToken: string): Promise<boolean> {
         'Connect-Protocol-Version': '1',
         'X-Codeium-Csrf-Token': csrfToken
       },
-      rejectUnauthorized: false,
-      timeout: 2000
+      timeout: 1500
     }, (response) => {
       response.resume();
       resolve(response.statusCode === 200);

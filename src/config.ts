@@ -19,18 +19,11 @@ export type MonitorConfig = {
 };
 
 export function getDefaultSessionRoots(): string[] {
-  const home = os.homedir();
-  const candidates = [
-    path.join(home, '.gemini', 'antigravity-ide'),
-    path.join(home, '.gemini', 'antigravity')
-  ];
-  const existing = candidates.filter(p => fs.existsSync(p));
-  return existing.length > 0 ? existing : candidates;
+  return [getDefaultSessionRoot()];
 }
 
 export function getDefaultSessionRoot(): string {
-  const roots = getDefaultSessionRoots();
-  return roots[0];
+  return path.join(os.homedir(), '.gemini', 'antigravity');
 }
 
 export function readConfig(): MonitorConfig {

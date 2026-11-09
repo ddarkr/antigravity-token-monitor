@@ -48,10 +48,10 @@ export class SessionScanner {
         if (filePaths.length === 0) {
           continue;
         }
-        const pbPath = path.join(conversationsDir, `${sessionId}.pb`);
-        const pbStat = await safeStat(pbPath);
-        if (pbStat) {
-          filePaths.push(pbPath);
+        const dbPath = path.join(conversationsDir, `${sessionId}.db`);
+        const dbStat = await safeStat(dbPath);
+        if (dbStat) {
+          filePaths.push(dbPath);
         }
 
         let lastModifiedMs = 0;
@@ -76,7 +76,7 @@ export class SessionScanner {
         sessions.push({
           sessionId,
           sessionDir,
-          pbPath: pbStat ? pbPath : undefined,
+          pbPath: dbStat ? dbPath : undefined,
           filePaths: filePaths.sort(),
           labelHint: sessionId,
           lastModifiedMs,
