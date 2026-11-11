@@ -113,4 +113,15 @@ describe('litellmPricing', () => {
     expect(catalog.resolveModelPricing('claude-opus-4-6-thinking')?.input_cost_per_token).toBe(0.000005);
     expect(catalog.resolveModelPricing('gpt-oss-120b-medium')?.input_cost_per_token).toBe(0.000003);
   });
+
+  it('resolves gemini 3.8 quality suffix aliases (-n, -h, -m, -l)', async () => {
+    const catalog = new LiteLlmPricingCatalog(async () => new Response(JSON.stringify({
+      'gemini-3.8-flash': { input_cost_per_token: 0.00000075 }
+    }), { status: 200 }), 'https://example.test/pricing.json');
+
+    await catalog.getSnapshot();
+
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-n')?.input_cost_per_token).toBe(0.00000075);
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-h')?.input_cost_per_token).toBe(0.00000075);
+  });
 });

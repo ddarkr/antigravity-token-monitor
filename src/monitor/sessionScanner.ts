@@ -22,6 +22,7 @@ export class SessionScanner {
     for (const sessionRoot of roots) {
       const brainDir = path.join(sessionRoot, 'brain');
       const conversationsDir = path.join(sessionRoot, 'conversations');
+      const annotationsDir = path.join(sessionRoot, 'annotations');
 
       const dirEntries = await safeReadDir(brainDir);
       if (!dirEntries.ok) {
@@ -45,14 +46,16 @@ export class SessionScanner {
         }
 
         const filePaths = collected.files.filter((f) => TEXT_EXTENSIONS.has(path.extname(f).toLowerCase()));
-        if (filePaths.length === 0) {
-          continue;
-        }
         const dbPath = path.join(conversationsDir, `${sessionId}.db`);
         const dbStat = await safeStat(dbPath);
+        if (filePaths.length === 0 && !dbStat) {
+          continue;
+        }
         if (dbStat) {
           filePaths.push(dbPath);
         }
+
+        const annotationTitle = await readAnnotationTitle(path.join(annotationsDir, `${sessionId}.pbtxt`));
 
         let lastModifiedMs = 0;
         const signatureParts: string[] = [];
@@ -78,7 +81,7 @@ export class SessionScanner {
           sessionDir,
           pbPath: dbStat ? dbPath : undefined,
           filePaths: filePaths.sort(),
-          labelHint: sessionId,
+          labelHint: annotationTitle ?? sessionId,
           lastModifiedMs,
           signature: createHash('sha1').update(signatureParts.join('|')).digest('hex')
         });
@@ -138,6 +141,20 @@ async function safeReadDir(dirPath: string): Promise<{ ok: true; entries: Dirent
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, error: message };
+  }
+}
+
+async function readAnnotationTitle(filePath: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    const match = raw.match(/title:"((?:[^"\\]|\\.)*)"/);
+    if (!match?.[1]) {
+      return undefined;
+    }
+    const decoded = match[1].replace(/\\(.)/g, '$1').trim();
+    return decoded || undefined;
+  } catch {
+    return undefined;
   }
 }
 

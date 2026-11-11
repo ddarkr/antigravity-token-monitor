@@ -20,11 +20,11 @@ describe('New Antigravity IDE Live Pipeline Test', () => {
     debug: true,
     pollIntervalMs: 60000,
     historyLimit: 120,
-    maxFileBytes: 10 * 1024 * 1024,
+    maxFileBytes: 524288,
     useRpcExport: true,
-    exportStepsJsonl: true,
+    exportStepsJsonl: false,
     rpcExportIntervalMs: 300000,
-    rpcTimeoutMs: 5000
+    rpcTimeoutMs: 15000
   };
 
   it('Step 1: ProcessLocator detects live agy daemon via HTTP', async () => {
@@ -74,54 +74,55 @@ describe('New Antigravity IDE Live Pipeline Test', () => {
     console.log(`[LIVE TEST] SQLite DB detected: ${first.pbPath ?? 'none'}`);
   });
 
-  it('Step 4: End-to-end export, parse, and cost calculation for live session', async () => {
+  it('Step 4: End-to-end export, parse, and cost calculation for all live sessions', async () => {
     const scanner = new SessionScanner();
     const scanResult = await scanner.scan(config.sessionRoots);
     expect(scanResult.sessions.length).toBeGreaterThan(0);
 
     const artifactStore = new RpcArtifactStore(config.sessionRoot);
     const exporter = new TrajectoryExporter(config, artifactStore);
-    const exportResult = await exporter.exportChangedSessions(scanResult.sessions.slice(0, 3), { force: true });
+    const exportResult = await exporter.exportChangedSessions(scanResult.sessions, { force: true });
 
-    expect(exportResult.exportedCount).toBeGreaterThan(0);
-    console.log(`[LIVE TEST] Exported ${exportResult.exportedCount} session(s) to RPC artifacts.`);
-
-    const targetSession = scanResult.sessions[0];
-    const parsePlan = await resolveParsePlan(targetSession, artifactStore);
-    expect(parsePlan.source).toBe('rpc-artifact');
+    expect(exportResult.exportedCount).toBe(scanResult.sessions.length);
+    console.log(`[LIVE TEST] Exported ${exportResult.exportedCount}/${scanResult.sessions.length} session(s) to RPC artifacts (v2).`);
 
     const parser = new AntigravitySessionParser(config.maxFileBytes);
-    const totals = await parser.parse(parsePlan);
-
-    expect(totals.mode).toBe('reported');
-    expect(totals.totalTokens).toBeGreaterThan(0);
-    expect(totals.evidenceCount).toBeGreaterThan(0);
-
-    console.log(`[LIVE TEST] Parsed session totals:`);
-    console.log(`  - Total Tokens: ${totals.totalTokens.toLocaleString()}`);
-    console.log(`  - Input Tokens: ${totals.inputTokens.toLocaleString()}`);
-    console.log(`  - Output Tokens: ${totals.outputTokens.toLocaleString()}`);
-    console.log(`  - Cache Read Tokens: ${totals.cacheReadTokens.toLocaleString()}`);
-    console.log(`  - Reasoning Tokens: ${totals.reasoningTokens.toLocaleString()}`);
-    console.log(`  - Message Count: ${totals.messageCount}`);
-    console.log(`  - Models Used:`, Object.keys(totals.modelTotals ?? {}));
-
     const catalog = new LiteLlmPricingCatalog();
     const snapshot = await catalog.getSnapshot();
     expect(snapshot.priceMap).toBeDefined();
 
-    for (const [model, count] of Object.entries(totals.modelTotals ?? {})) {
-      const breakdown = totals.modelBreakdowns?.[model];
-      const pricing = catalog.resolveModelPricing(model);
-      const cost = calculateModelCost(breakdown ?? {
-        inputTokens: totals.inputTokens,
-        outputTokens: totals.outputTokens,
-        cacheReadTokens: totals.cacheReadTokens,
-        cacheWriteTokens: totals.cacheWriteTokens,
-        reasoningTokens: totals.reasoningTokens,
-        totalTokens: count
-      }, pricing, 'No pricing');
-      console.log(`  - Model [${model}] ${count} tokens => Cost status: ${cost.pricingStatus}, USD: ${cost.costUsd !== undefined ? '$' + cost.costUsd.toFixed(4) : 'unpriced'}`);
+    for (const targetSession of scanResult.sessions) {
+      const parsePlan = await resolveParsePlan(targetSession, artifactStore);
+      expect(parsePlan.source).toBe('rpc-artifact');
+
+      const totals = await parser.parse(parsePlan);
+      expect(totals.mode).toBe('reported');
+      expect(totals.totalTokens).toBeGreaterThan(0);
+      expect(totals.evidenceCount).toBeGreaterThan(0);
+      expect(Object.keys(totals.modelTotals ?? {})).not.toContain('unknown');
+
+      let sessionUsd = 0;
+      const modelSummaries: string[] = [];
+      for (const [model, count] of Object.entries(totals.modelTotals ?? {})) {
+        const breakdown = totals.modelBreakdowns?.[model];
+        const pricing = catalog.resolveModelPricing(model);
+        const cost = calculateModelCost(breakdown ?? {
+          inputTokens: totals.inputTokens,
+          outputTokens: totals.outputTokens,
+          cacheReadTokens: totals.cacheReadTokens,
+          cacheWriteTokens: totals.cacheWriteTokens,
+          reasoningTokens: totals.reasoningTokens,
+          totalTokens: count
+        }, pricing, 'No pricing');
+        if (cost.costUsd !== undefined) {
+          sessionUsd += cost.costUsd;
+        }
+        modelSummaries.push(`${model}:${count.toLocaleString()}(${cost.pricingStatus})`);
+      }
+
+      console.log(
+        `[LIVE TEST] ${totals.sessionId.slice(0, 8)} "${totals.label}" | total=${totals.totalTokens.toLocaleString()} | msgs=${totals.messageCount} | $${sessionUsd.toFixed(4)} | models=[${modelSummaries.join(', ')}]`
+      );
     }
-  });
+  }, 30000);
 });
