@@ -51,7 +51,7 @@ export function readConfig(): MonitorConfig {
     useRpcExport: config.get<boolean>('useRpcExport', true),
     exportStepsJsonl: config.get<boolean>('exportStepsJsonl', false),
     rpcExportIntervalMs: validateTimeConfig('rpcExportIntervalMs', config.get<number>('rpcExportIntervalMs', 300000), 300000),
-    rpcTimeoutMs: validateTimeConfig('rpcTimeoutMs', config.get<number>('rpcTimeoutMs', 5000), 5000)
+    rpcTimeoutMs: validateTimeConfig('rpcTimeoutMs', config.get<number>('rpcTimeoutMs', 15000), 15000)
   };
 }
 

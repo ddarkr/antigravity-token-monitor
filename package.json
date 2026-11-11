@@ -97,7 +97,7 @@
 				},
 				"antigravity-token-monitor.maxFileBytes": {
 					"type": "number",
-					"default": 524288,
+					"default": 10485760,
 					"minimum": 16384,
 					"description": "Token 估算时读取文件的最大大小（字节）。"
 				},
@@ -119,7 +119,7 @@
 				},
 				"antigravity-token-monitor.rpcTimeoutMs": {
 					"type": "number",
-					"default": 5000,
+					"default": 15000,
 					"minimum": 1000,
 					"description": "内部 Antigravity RPC 请求的超时时间（毫秒）。"
 				}

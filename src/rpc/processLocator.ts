@@ -1,5 +1,7 @@
+import * as fs from 'fs/promises';
 import * as http from 'http';
 import * as os from 'os';
+import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -28,9 +30,19 @@ export class ProcessLocator {
 
   async detectConnections(): Promise<RpcConnectionInfo[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const daemonConnections = await this.detectFromDaemonFiles();
+      if (daemonConnections.length > 0) {
+        this.log?.(`ProcessLocator: resolved ${daemonConnections.length} RPC connection(s) via daemon hub metadata.`);
+        return daemonConnections;
+      }
+
       const processInfos = await this.detectProcesses();
       if (processInfos.length === 0) {
         this.log?.(`ProcessLocator: no Antigravity process detected (attempt ${attempt + 1}/2).`);
+        if (attempt < 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
         return [];
       }
 
@@ -68,6 +80,65 @@ export class ProcessLocator {
     }
 
     return [];
+  }
+
+  private async detectFromDaemonFiles(): Promise<RpcConnectionInfo[]> {
+    const daemonDir = path.join(os.homedir(), '.gemini', 'antigravity', 'daemon');
+    let entries: string[];
+    try {
+      entries = await fs.readdir(daemonDir);
+    } catch {
+      return [];
+    }
+
+    const hubFiles = entries.filter((name) => /^hub_\d+\.json$/i.test(name));
+    if (hubFiles.length === 0) {
+      return [];
+    }
+
+    const withStats = await Promise.all(
+      hubFiles.map(async (name) => {
+        const filePath = path.join(daemonDir, name);
+        try {
+          const stat = await fs.stat(filePath);
+          return { filePath, mtimeMs: stat.mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const recent = withStats
+      .filter((item): item is { filePath: string; mtimeMs: number } => item !== null)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(0, 8);
+
+    const connections: RpcConnectionInfo[] = [];
+    const seenPids = new Set<number>();
+
+    for (const item of recent) {
+      try {
+        const raw = await fs.readFile(item.filePath, 'utf8');
+        const parsed = JSON.parse(raw) as { pid?: unknown; httpPort?: unknown; csrfToken?: unknown };
+        const pid = typeof parsed.pid === 'number' ? parsed.pid : Number.NaN;
+        const port = typeof parsed.httpPort === 'number' ? parsed.httpPort : Number.NaN;
+        const csrfToken = typeof parsed.csrfToken === 'string' ? parsed.csrfToken.trim() : '';
+
+        if (!Number.isFinite(pid) || !Number.isFinite(port) || port <= 0 || !csrfToken || seenPids.has(pid)) {
+          continue;
+        }
+        if (!isPidAlive(pid)) {
+          continue;
+        }
+        if (await testPort(port, csrfToken)) {
+          seenPids.add(pid);
+          connections.push({ pid, port, csrfToken });
+        }
+      } catch {
+      }
+    }
+
+    return connections;
   }
 
   private async detectProcesses(): Promise<ProcessCandidate[]> {
@@ -237,6 +308,15 @@ function getProcessNames(): string[] {
     return ['agy.exe', 'agy'];
   }
   return ['agy'];
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code === 'EPERM';
+  }
 }
 
 async function testPort(port: number, csrfToken: string): Promise<boolean> {

@@ -24,16 +24,26 @@ export class AntigravitySessionParser {
     const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
     let messageCount = 0;
     let evidenceCount = 0;
+    let hasUsageArtifactEvidence = false;
     let estimatedText = '';
-    console.warn(`[DEBUG] parse: tokenFilePaths=${candidate.tokenFilePaths?.join(' | ')}`);
-    for (const filePath of candidate.tokenFilePaths) {
-      const parsed = await this.readFileContent(filePath);
+
+    const enforceSizeLimit = candidate.source !== 'rpc-artifact';
+    const orderedPaths = [...candidate.tokenFilePaths].sort((a, b) => {
+      const aIsUsage = path.basename(a).toLowerCase() === 'usage.jsonl' ? 0 : 1;
+      const bIsUsage = path.basename(b).toLowerCase() === 'usage.jsonl' ? 0 : 1;
+      return aIsUsage - bIsUsage;
+    });
+
+    for (const filePath of orderedPaths) {
+      const parsed = await this.readFileContent(filePath, enforceSizeLimit);
       if (!parsed) {
         continue;
       }
 
       const { content } = parsed;
       const ext = path.extname(filePath).toLowerCase();
+      const baseName = path.basename(filePath).toLowerCase();
+
       if (ext === '.json' || ext === '.jsonl') {
         const {
           breakdown,
@@ -43,26 +53,36 @@ export class AntigravitySessionParser {
           modelTotals: parsedModelTotals,
           modelBreakdowns: parsedModelBreakdowns
         } = extractStructuredSignals(content, ext);
+
+        messageCount += parsedMessageCount;
+        estimatedText += text;
+
+        // Avoid double-counting: when usage.jsonl already provided reported evidence,
+        // steps.jsonl should only contribute messageCount (steps carry duplicate usage totals).
+        if (candidate.source === 'rpc-artifact' && baseName === 'steps.jsonl' && hasUsageArtifactEvidence) {
+          continue;
+        }
+
         mergeBreakdown(reported, breakdown);
         mergeModelTotals(modelTotals, parsedModelTotals);
         mergeModelBreakdowns(modelBreakdowns, parsedModelBreakdowns);
         evidenceCount += hits;
-        messageCount += parsedMessageCount;
-        estimatedText += text;
+        if (candidate.source === 'rpc-artifact' && baseName === 'usage.jsonl' && hits > 0) {
+          hasUsageArtifactEvidence = true;
+        }
       } else {
         estimatedText += `\n${content}`;
       }
     }
 
     const label = await this.resolveLabel(candidate);
-    console.warn(`[DEBUG] parse result: evidenceCount=${evidenceCount} mode=${evidenceCount > 0 ? 'reported' : 'estimated'}`);
     return evidenceCount > 0 ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount) : finalizeEstimated(candidate, label, estimatedText, messageCount);
   }
 
   private async resolveLabel(candidate: SessionParsePlan): Promise<string> {
     for (const labelFile of LABEL_FILES) {
       const filePath = path.join(candidate.sessionDir, labelFile);
-      const content = await this.readFileContent(filePath);
+      const content = await this.readFileContent(filePath, true, true);
       if (!content) {
         continue;
       }
@@ -76,7 +96,11 @@ export class AntigravitySessionParser {
     return candidate.labelHint;
   }
 
-  private async readFileContent(filePath: string): Promise<{ content: string } | null> {
+  private async readFileContent(
+    filePath: string,
+    enforceSizeLimit = true,
+    quietMissing = false
+  ): Promise<{ content: string } | null> {
     const ext = path.extname(filePath).toLowerCase();
     if (!TEXT_EXTENSIONS.has(ext)) {
       return null;
@@ -84,14 +108,15 @@ export class AntigravitySessionParser {
 
     try {
       const stat = await fs.stat(filePath);
-      console.warn(`[DEBUG] readFileContent: ${filePath} size=${stat.size} max=${this.maxFileBytes} skip=${stat.size > this.maxFileBytes}`);
-      if (stat.size > this.maxFileBytes) {
+      if (enforceSizeLimit && stat.size > this.maxFileBytes) {
         return null;
       }
 
       return { content: await fs.readFile(filePath, 'utf8') };
     } catch (error) {
-      console.warn(`[antigravity-token-monitor] Failed to read ${filePath}:`, error);
+      if (!quietMissing || (error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        console.warn(`[antigravity-token-monitor] Failed to read ${filePath}:`, error);
+      }
       return null;
     }
   }
@@ -193,32 +218,26 @@ function walkForTokenSignals(value: unknown): SignalResult {
         const model = currentModel ?? 'unknown';
         if (/^(input|prompt).*token/.test(normalizedKey)) {
           breakdown.inputTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { inputTokens: numericValue });
           hits += 1;
         } else if (/^(output|completion).*token/.test(normalizedKey)) {
           breakdown.outputTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { outputTokens: numericValue });
           hits += 1;
         } else if (/cache.*read.*token/.test(normalizedKey)) {
           breakdown.cacheReadTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { cacheReadTokens: numericValue });
           hits += 1;
         } else if (/cache.*write.*token/.test(normalizedKey)) {
           breakdown.cacheWriteTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { cacheWriteTokens: numericValue });
           hits += 1;
         } else if (/(reasoning|thinking).*token/.test(normalizedKey)) {
           breakdown.reasoningTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { reasoningTokens: numericValue });
           hits += 1;
         } else if (normalizedKey === 'totaltokens' || normalizedKey === 'total_tokens') {
           breakdown.totalTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
           mergeModelCategory(modelBreakdowns, model, { totalTokens: numericValue });
           hits += 1;
         }
@@ -231,6 +250,9 @@ function walkForTokenSignals(value: unknown): SignalResult {
   visit(value);
   breakdown.totalTokens = normalizeTotal(breakdown);
   finalizeModelBreakdowns(modelBreakdowns);
+  for (const [model, mb] of Object.entries(modelBreakdowns)) {
+    modelTotals[model] = mb.totalTokens;
+  }
   return { breakdown, hits, modelTotals, modelBreakdowns };
 }
 

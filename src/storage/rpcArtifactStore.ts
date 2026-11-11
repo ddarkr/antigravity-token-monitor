@@ -12,7 +12,7 @@ type ArtifactPayload = {
 };
 
 const CACHE_DIR = '.token-monitor';
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 
 export class RpcArtifactStore {
   constructor(private readonly sessionRoot: string) {}
