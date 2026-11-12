@@ -69,9 +69,11 @@
       </div>
     {/if}
 
-    <div class="status-pill {state.syncStatus}">
+    <div class="status-pill {state.syncStatus}" title={state.syncMessage || undefined}>
       <span class="status-indicator"></span>
-      {state.syncMessage}
+      {#if state.syncMessage}
+        <span class="status-text">{state.syncMessage}</span>
+      {/if}
     </div>
     <button class="button" on:click={handleRefresh} disabled={state.syncStatus === 'running'}>
       {state.syncStatus === 'running' ? '正在刷新...' : '立即刷新'}
@@ -84,20 +86,21 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: var(--spacing-sm);
+    gap: 5px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm, 8px);
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 6px 10px;
   }
   .brand {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: 6px;
   }
   .logo-mark {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
     border-radius: 3px;
     background: var(--accent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
@@ -106,25 +109,29 @@
     font-size: 11px;
     font-weight: 600;
     margin: 0;
-    letter-spacing: 0.04em;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
     color: var(--muted);
+    white-space: nowrap;
   }
   .actions {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .button {
     border: 1px solid var(--line-strong);
     background: transparent;
     color: var(--text);
     border-radius: 4px;
-    padding: 3px 10px;
+    padding: 2px 9px;
     font-size: 11px;
     cursor: pointer;
     font-weight: 500;
     min-height: 22px;
+    white-space: nowrap;
     transition: all 0.2s ease;
   }
   .button:hover:not(:disabled) {
@@ -139,19 +146,26 @@
   .status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 2px 6px;
+    gap: 4px;
+    padding: 2px 4px;
     border-radius: 4px;
     color: var(--muted);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     background: transparent;
+  }
+  .status-text {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .status-indicator {
     width: 6px;
     height: 6px;
+    flex-shrink: 0;
     border-radius: 50%;
     background: var(--muted);
   }
@@ -181,8 +195,8 @@
   /* Countdown Glow Styles */
   .countdown-container {
     position: relative;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -230,10 +244,16 @@
     100% { opacity: 0.4; transform: scale(1.1); }
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 520px) {
     .header-widget {
-      align-items: flex-start;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
       width: 100%;
+    }
+    .title {
+      white-space: normal;
     }
   }
 </style>

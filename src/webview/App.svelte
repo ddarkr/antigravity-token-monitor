@@ -66,10 +66,10 @@
     animation: fade-in 220ms ease;
   }
   .main-content {
-    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-2xl);
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-xl);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: var(--spacing-md);
     max-width: 1600px;
     margin: 0 auto;
     width: 100%;

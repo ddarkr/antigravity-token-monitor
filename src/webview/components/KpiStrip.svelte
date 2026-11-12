@@ -47,13 +47,13 @@
     background: var(--hero-bg);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: var(--spacing-xl) var(--spacing-xl);
+    padding: var(--spacing-md) var(--spacing-lg);
     box-shadow: var(--shadow-elevated);
     position: relative;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: var(--spacing-md);
   }
   .stat-band::before {
     content: '';
@@ -67,48 +67,54 @@
   }
   .stat-hero-row {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid var(--line);
-    padding-bottom: var(--spacing-lg);
-    gap: var(--spacing-lg);
+    padding-bottom: 14px;
+    gap: 10px var(--spacing-md);
   }
   .stat-header-container {
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
   }
   .stat-sub-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--spacing-xl);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px var(--spacing-md);
   }
   .stat-block {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 2px;
+    min-width: 0;
   }
   .stat-block.primary {
-    flex: 1;
-    gap: var(--spacing-sm);
+    flex: 1 1 160px;
+    min-width: min(100%, 160px);
+    gap: 2px;
   }
   .stat-label {
     color: var(--muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-family: var(--font-display);
   }
   .stat-value {
-    font-size: 24px;
+    font-size: clamp(20px, 2.2vw, 24px);
     font-weight: 300;
     line-height: 1.1;
     color: var(--text);
     font-variant-numeric: tabular-nums;
     font-family: var(--code-font);
     letter-spacing: -0.02em;
+    white-space: nowrap;
   }
   .stat-block.primary .stat-value {
-    font-size: 36px;
+    font-size: clamp(24px, 3vw, 34px);
+    line-height: 1.08;
   }
   .stat-value.highlight {
     color: var(--accent-strong);
@@ -118,16 +124,24 @@
   .stat-context {
     color: var(--muted);
     font-size: 11px;
-    line-height: 1.4;
+    line-height: 1.35;
   }
-  @media (max-width: 900px) {
+  @media (max-width: 640px) {
+    .stat-band {
+      padding: 14px var(--spacing-md);
+      gap: 12px;
+    }
+  }
+  @media (max-width: 520px) {
     .stat-hero-row {
-      flex-direction: column;
       align-items: flex-start;
+    }
+    .stat-header-container {
+      width: 100%;
     }
     .stat-sub-grid {
       grid-template-columns: 1fr;
-      gap: var(--spacing-md);
+      gap: var(--spacing-sm);
     }
   }
 </style>
