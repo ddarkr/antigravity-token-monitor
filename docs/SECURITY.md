@@ -8,7 +8,7 @@
 |------|------|--------|
 | Antigravity RPC | `127.0.0.1`에 HTTPS로 연결, 자체 서명 인증서 | Low (로컬 전용) |
 | CSRF 토큰 | 프로세스 인수에서 추출, 모든 RPC 요청에 첨부 | Medium |
-| LiteLLM 가격표 | GitHub에서 JSON 다운로드 (외부 네트워크 유일) | Low |
+| 가격표 (models.dev / LiteLLM) | `models.dev/api.json` 및 GitHub LiteLLM JSON 읽기 전용 다운로드 (허용된 외부 네트워크) | Low |
 | 로컬 파일 | JSONL 아티팩트, 스냅샷, 락 파일 | Low |
 | `exportStepsJsonl` | 활성화 시 대화 내용이 **평문 JSONL**로 저장 | **High** |
 

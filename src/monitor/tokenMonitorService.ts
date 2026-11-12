@@ -76,7 +76,6 @@ export class TokenMonitorService implements vscode.Disposable {
   private lastExportError: string | undefined;
   private lastExportAt: number | undefined;
   private lastExportedCount = 0;
-  private readonly pricingCatalog = new LiteLlmPricingCatalog();
   private pricingState: PricingState = {};
 
   private static readonly EMIT_DEBOUNCE_MS = 150;
@@ -88,7 +87,8 @@ export class TokenMonitorService implements vscode.Disposable {
     private readonly parserFactory: (config: MonitorConfig) => AntigravitySessionParser,
     private readonly calculator: SessionUsageCalculator,
     private readonly store: SnapshotStore,
-    private readonly outputChannel: vscode.OutputChannel
+    private readonly outputChannel: vscode.OutputChannel,
+    private readonly pricingCatalog: LiteLlmPricingCatalog = new LiteLlmPricingCatalog()
   ) {}
 
   async initialize(): Promise<void> {
@@ -458,7 +458,7 @@ export class TokenMonitorService implements vscode.Disposable {
         error: undefined
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to refresh LiteLLM pricing data.';
+      const message = error instanceof Error ? error.message : 'Failed to refresh pricing data.';
       this.pricingState = {
         snapshot: this.pricingState.snapshot,
         error: message
@@ -813,7 +813,7 @@ function buildDashboardAnalytics(
     });
   }
 
-  const unavailableNote = pricingSnapshot ? 'No LiteLLM pricing match.' : pricingError ?? 'LiteLLM pricing data unavailable.';
+  const unavailableNote = pricingSnapshot ? 'No pricing match.' : pricingError ?? 'Pricing data unavailable.';
   const modelUsage = Array.from(modelTotals.entries())
     .map(([model, accumulator]): ModelUsageBreakdown => {
       const costResult = calculateModelCost(
@@ -918,7 +918,7 @@ function buildPricingMessage(
   }
 
   if (!pricingSnapshot) {
-    return 'LiteLLM pricing data has not been loaded yet.';
+    return 'Pricing data has not been loaded yet.';
   }
 
   if (missingModelCount > 0) {
@@ -926,8 +926,8 @@ function buildPricingMessage(
   }
 
   if (pricedModelCount === 0) {
-    return 'LiteLLM pricing loaded, but no models are priceable yet.';
+    return 'Pricing loaded, but no models are priceable yet.';
   }
 
-  return `LiteLLM pricing loaded for ${pricedModelCount} model${pricedModelCount === 1 ? '' : 's'}.`;
+  return `Pricing loaded for ${pricedModelCount} model${pricedModelCount === 1 ? '' : 's'}.`;
 }
