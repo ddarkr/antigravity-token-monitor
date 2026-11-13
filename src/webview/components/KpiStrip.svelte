@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { DashboardState } from '../../types';
-  import { formatNumber, formatUsd } from '../lib/formatters';
+  import { formatNumber, formatPercent, formatUsd } from '../lib/formatters';
   import HeaderBar from './HeaderBar.svelte';
 
   export let state: DashboardState;
   $: summary = state.summary;
   $: pricing = state.pricing;
+  $: totalInputAndCache = state.sessions.reduce(
+    (sum, s) => sum + (s.latest.inputTokens || 0) + (s.latest.cacheReadTokens || 0),
+    0
+  );
+  $: totalCacheRead = state.sessions.reduce((sum, s) => sum + (s.latest.cacheReadTokens || 0), 0);
+  $: cacheHitRate = totalInputAndCache > 0 ? totalCacheRead / totalInputAndCache : undefined;
 </script>
 
 <section class="stat-band">
@@ -37,7 +43,18 @@
     <article class="stat-block">
       <div class="stat-label">预估总费用</div>
       <div class="stat-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '暂无报价'}</div>
-      <div class="stat-context">{pricing.message}</div>
+      <div class="stat-context">
+        {#if pricing.totalCacheSavedUsd !== undefined && pricing.totalCacheSavedUsd > 0}
+          缓存节省 {formatUsd(pricing.totalCacheSavedUsd)}
+          {#if cacheHitRate !== undefined}
+            • 命中率 {formatPercent(cacheHitRate)}
+          {/if}
+        {:else if cacheHitRate !== undefined}
+          缓存命中率 {formatPercent(cacheHitRate)} • {pricing.message}
+        {:else}
+          {pricing.message}
+        {/if}
+      </div>
     </article>
   </div>
 </section>
@@ -117,9 +134,8 @@
     line-height: 1.08;
   }
   .stat-value.highlight {
-    color: var(--accent-strong);
-    font-weight: 400;
-    text-shadow: 0 0 24px rgba(199, 242, 150, 0.2);
+    color: var(--accent);
+    font-weight: 500;
   }
   .stat-context {
     color: var(--muted);

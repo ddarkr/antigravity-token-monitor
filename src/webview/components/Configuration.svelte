@@ -32,7 +32,7 @@
       <div class="info-card" role="status" aria-live="polite">
         <div class="info-title">步骤导出：仅元数据</div>
         <div class="info-copy">
-          `exportStepsJsonl` 当前处于关闭状态 — 仅导出步骤元数据（角色、时间戳、模型）。消息计数正常工作。启用后可包含完整对话内容。
+          当前已关闭步骤正文导出，仅保留脱敏元数据（角色、时间戳、模型、工具名）。开启 <code>exportStepsJsonl</code> 后才会写入完整对话文本。
         </div>
       </div>
     {/if}
@@ -56,7 +56,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -75,10 +75,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+    flex: 1;
   }
 
   .config-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid var(--surface-line);
     border-radius: 8px;
     padding: var(--spacing-sm);
@@ -102,7 +103,7 @@
   .config-value {
     font-size: 10px;
     color: var(--text);
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--surface-muted);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: 4px;
     border: 1px solid var(--surface-line);
@@ -112,8 +113,8 @@
     font-family: var(--code-font);
   }
   .info-card {
-    border: 1px solid rgba(130, 170, 227, 0.3);
-    background: rgba(130, 170, 227, 0.08);
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
     border-radius: 8px;
     padding: var(--spacing-sm);
     display: flex;

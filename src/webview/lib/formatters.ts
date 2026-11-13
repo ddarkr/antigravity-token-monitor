@@ -27,6 +27,10 @@ export function formatUsd(value: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(value);
 }
 
+export function formatPercent(rate: number): string {
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
 export function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleString();
 }

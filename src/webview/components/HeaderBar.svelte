@@ -87,9 +87,9 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 5px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid var(--line);
-    border-radius: var(--radius-sm, 8px);
+    border-radius: var(--radius-sm);
     padding: 6px 10px;
   }
   .brand {
@@ -136,8 +136,8 @@
   }
   .button:hover:not(:disabled) {
     border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--accent-strong);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .button:disabled {
     opacity: 0.5;
@@ -235,7 +235,7 @@
     position: relative;
     font-size: 9px;
     font-weight: 700;
-    color: var(--accent-strong, #fff);
+    color: var(--accent);
     font-variant-numeric: tabular-nums;
     z-index: 1;
   }

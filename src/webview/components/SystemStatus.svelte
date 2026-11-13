@@ -51,7 +51,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -70,13 +70,15 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+    flex: 1;
   }
 
   .status-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid var(--surface-line);
     border-radius: 8px;
     padding: var(--spacing-sm);
+    flex: 1;
   }
 
   .status-header {

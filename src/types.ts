@@ -13,6 +13,34 @@ export type TokenMode = 'reported' | 'estimated';
 
 export type TokenSource = 'filesystem' | 'rpc-artifact';
 
+export type ActivityCategory =
+  | 'file_read'
+  | 'search'
+  | 'file_edit'
+  | 'command'
+  | 'agent'
+  | 'thinking_response'
+  | 'other';
+
+export type SessionActivityBreakdown = {
+  category: ActivityCategory;
+  label: string;
+  stepCount: number;
+  callCount: number;
+  totalTokens: number;
+  costUsd?: number;
+  tools: Record<string, number>;
+  modelTotals?: Record<string, number>;
+};
+
+export type SessionModelCost = {
+  costUsd?: number;
+  cacheSavedUsd?: number;
+  cacheHitRate?: number;
+  pricingStatus: 'priced' | 'unpriced';
+  pricingNote?: string;
+};
+
 export type SessionScanCandidate = {
   sessionId: string;
   sessionDir: string;
@@ -24,7 +52,7 @@ export type SessionScanCandidate = {
 };
 
 export type RpcArtifactManifest = {
-  schemaVersion: 1;
+  schemaVersion: number;
   sessionId: string;
   serverLastModifiedMs?: number;
   stepCount?: number;
@@ -61,6 +89,7 @@ export type SessionTotals = TokenBreakdown & {
   messageCount?: number;
   modelTotals?: Record<string, number>;
   modelBreakdowns?: Record<string, ModelTokenBreakdown>;
+  activityBreakdown?: SessionActivityBreakdown[];
 };
 
 export type SessionSnapshot = TokenBreakdown & {
@@ -105,6 +134,12 @@ export type DashboardSession = {
   snapshotCount: number;
   modelTotals?: Record<string, number>;
   modelBreakdowns?: Record<string, ModelTokenBreakdown>;
+  costUsd?: number;
+  cacheSavedUsd?: number;
+  cacheHitRate?: number;
+  pricingStatus?: 'priced' | 'partial' | 'unpriced';
+  modelCosts?: Record<string, SessionModelCost>;
+  activityBreakdown?: SessionActivityBreakdown[];
 };
 
 export type ActivityHeatmapBin = {
@@ -139,6 +174,9 @@ export type ModelUsageBreakdown = {
   totalTokens: number;
   sessionCount: number;
   costUsd?: number;
+  cacheSavedUsd?: number;
+  cacheHitRate?: number;
+  breakdown?: ModelTokenBreakdown;
   pricingStatus: 'priced' | 'unpriced';
   pricingNote?: string;
 };
@@ -146,6 +184,7 @@ export type ModelUsageBreakdown = {
 export type DashboardPricingSummary = {
   status: 'ready' | 'partial' | 'unavailable' | 'error';
   totalCostUsd: number;
+  totalCacheSavedUsd?: number;
   pricedModelCount: number;
   unpricedModelCount: number;
   missingModels: string[];
@@ -204,6 +243,7 @@ export type WebviewToExtensionMessage =
 
 export type ExtensionToWebviewMessage =
   | { type: 'dashboard/state'; payload: DashboardState }
+  | { type: 'dashboard/selectSession'; sessionId: string }
   | { type: 'dashboard/error'; message: string };
 
 export type SidebarToExtensionMessage =

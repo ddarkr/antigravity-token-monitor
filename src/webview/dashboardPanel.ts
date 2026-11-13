@@ -8,6 +8,7 @@ export class DashboardPanel implements vscode.Disposable {
   private latestState?: DashboardState;
   private lastPostedStateJson?: string;
   private ready = false;
+  private pendingSelectedSessionId?: string;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -67,6 +68,11 @@ export class DashboardPanel implements vscode.Disposable {
     this.postState();
   }
 
+  selectSession(sessionId: string): void {
+    this.pendingSelectedSessionId = sessionId;
+    this.flushSelectedSession();
+  }
+
   dispose(): void {
     this.panel?.dispose();
     while (this.disposables.length > 0) {
@@ -84,12 +90,22 @@ export class DashboardPanel implements vscode.Disposable {
     }
 
     const nextStateJson = JSON.stringify(this.latestState);
-    if (nextStateJson === this.lastPostedStateJson) {
+    if (nextStateJson !== this.lastPostedStateJson) {
+      this.lastPostedStateJson = nextStateJson;
+      this.postMessage({ type: 'dashboard/state', payload: this.latestState });
+    }
+
+    this.flushSelectedSession();
+  }
+
+  private flushSelectedSession(): void {
+    if (!this.pendingSelectedSessionId || !this.panel || !this.ready || !this.panel.visible) {
       return;
     }
 
-    this.lastPostedStateJson = nextStateJson;
-    this.postMessage({ type: 'dashboard/state', payload: this.latestState });
+    const sessionId = this.pendingSelectedSessionId;
+    this.pendingSelectedSessionId = undefined;
+    this.postMessage({ type: 'dashboard/selectSession', sessionId });
   }
 
   private postMessage(message: ExtensionToWebviewMessage): void {

@@ -21,13 +21,17 @@ import {
   TokenMode,
   TokenSource,
   ModelUsageBreakdown,
-  RpcCoverageBreakdown
+  RpcCoverageBreakdown,
+  SessionActivityBreakdown,
+  SessionModelCost
 } from '../types';
 import { SessionScanner } from './sessionScanner';
 import { SessionUsageCalculator } from './sessionUsageCalculator';
 import {
+  calculateCacheHitRate,
   calculateModelCost,
   LiteLlmPricingCatalog,
+  type LiteLlmModelPricing,
   type LiteLlmPricingSnapshot
 } from '../pricing/litellmPricing';
 import { PollLock } from './pollLock';
@@ -109,8 +113,14 @@ export class TokenMonitorService implements vscode.Disposable {
   }
 
   getDashboardState(): DashboardState {
+    const resolvePricing = (model: string) => this.pricingCatalog.resolveModelPricing(model);
     const sessions = Object.values(this.state.sessions)
-      .map((session) => toDashboardSession(session))
+      .map((session) => toDashboardSession(
+        session,
+        this.pricingState.snapshot,
+        this.pricingState.error,
+        resolvePricing
+      ))
       .sort(compareDashboardSessions);
     const activeSessions = sessions.filter((session) => session.status === 'active');
     const archivedSessions = sessions.filter((session) => session.status === 'archived');
@@ -119,7 +129,7 @@ export class TokenMonitorService implements vscode.Disposable {
       this.lastExportedCount,
       this.pricingState.snapshot,
       this.pricingState.error,
-      (model) => this.pricingCatalog.resolveModelPricing(model)
+      resolvePricing
     );
 
     return {
@@ -505,9 +515,106 @@ function appendSnapshot(existing: SessionSnapshot[], next: SessionSnapshot, hist
   return [...existing, next].slice(-historyLimit);
 }
 
-function toDashboardSession(session: PersistedSessionState) {
+function computeSessionPricing(
+  latest: SessionTotals,
+  pricingSnapshot: LiteLlmPricingSnapshot | undefined,
+  pricingError: string | undefined,
+  resolvePricing: ((model: string) => LiteLlmModelPricing | undefined) | undefined
+): {
+  costUsd?: number;
+  cacheSavedUsd?: number;
+  cacheHitRate?: number;
+  pricingStatus: 'priced' | 'partial' | 'unpriced';
+  modelCosts: Record<string, SessionModelCost>;
+  activityBreakdown?: SessionActivityBreakdown[];
+} {
+  const unavailableNote = pricingSnapshot ? 'No pricing match.' : pricingError ?? 'Pricing data unavailable.';
+  const cacheHitRate = calculateCacheHitRate(latest.cacheReadTokens, latest.inputTokens);
+  const modelCosts: Record<string, SessionModelCost> = {};
+  const modelUnitRate = new Map<string, number>();
+  let totalCostUsd = 0;
+  let totalCacheSavedUsd = 0;
+  let pricedCount = 0;
+  let unpricedCount = 0;
+
+  if (latest.mode !== 'estimated' && latest.modelBreakdowns) {
+    for (const [model, breakdown] of Object.entries(latest.modelBreakdowns)) {
+      const result = calculateModelCost(
+        breakdown,
+        pricingSnapshot ? resolvePricing?.(model) : undefined,
+        unavailableNote
+      );
+      modelCosts[model] = {
+        costUsd: result.costUsd,
+        cacheSavedUsd: result.cacheSavedUsd,
+        cacheHitRate: result.cacheHitRate,
+        pricingStatus: result.pricingStatus,
+        pricingNote: result.pricingNote
+      };
+      if (result.pricingStatus === 'priced' && result.costUsd !== undefined) {
+        totalCostUsd += result.costUsd;
+        totalCacheSavedUsd += result.cacheSavedUsd ?? 0;
+        pricedCount += 1;
+        if (breakdown.totalTokens > 0) {
+          modelUnitRate.set(model, result.costUsd / breakdown.totalTokens);
+        }
+      } else {
+        unpricedCount += 1;
+      }
+    }
+  } else if (latest.modelTotals) {
+    for (const model of Object.keys(latest.modelTotals)) {
+      modelCosts[model] = {
+        pricingStatus: 'unpriced',
+        pricingNote: latest.mode === 'estimated'
+          ? 'Estimated session mode'
+          : 'Per-model token breakdown unavailable.'
+      };
+      unpricedCount += 1;
+    }
+  }
+
+  const pricingStatus: 'priced' | 'partial' | 'unpriced' = pricedCount === 0
+    ? 'unpriced'
+    : unpricedCount === 0
+      ? 'priced'
+      : 'partial';
+
+  const activityBreakdown = latest.activityBreakdown?.map((item): SessionActivityBreakdown => {
+    if (!item.modelTotals || modelUnitRate.size === 0) {
+      return item;
+    }
+    let itemCostUsd = 0;
+    let hasAnyPricedModel = false;
+    for (const [model, tokens] of Object.entries(item.modelTotals)) {
+      const rate = modelUnitRate.get(model);
+      if (rate !== undefined && tokens > 0) {
+        itemCostUsd += tokens * rate;
+        hasAnyPricedModel = true;
+      }
+    }
+    return hasAnyPricedModel ? { ...item, costUsd: itemCostUsd } : item;
+  });
+
+  return {
+    costUsd: pricedCount > 0 ? totalCostUsd : undefined,
+    cacheSavedUsd: pricedCount > 0 ? totalCacheSavedUsd : undefined,
+    cacheHitRate,
+    pricingStatus,
+    modelCosts,
+    activityBreakdown
+  };
+}
+
+function toDashboardSession(
+  session: PersistedSessionState,
+  pricingSnapshot?: LiteLlmPricingSnapshot,
+  pricingError?: string,
+  resolvePricing?: (model: string) => LiteLlmModelPricing | undefined
+) {
   const source = session.latest.source ?? 'filesystem';
   const latestDelta = currentLatestDelta(session);
+  const priced = computeSessionPricing(session.latest, pricingSnapshot, pricingError, resolvePricing);
 
   return {
     sessionId: session.latest.sessionId,
@@ -525,7 +632,13 @@ function toDashboardSession(session: PersistedSessionState) {
     recentTotals: session.snapshots.slice(-12).map((snapshot) => snapshot.totalTokens),
     snapshotCount: session.snapshots.length,
     modelTotals: session.latest.modelTotals,
-    modelBreakdowns: session.latest.modelBreakdowns
+    modelBreakdowns: session.latest.modelBreakdowns,
+    costUsd: priced.costUsd,
+    cacheSavedUsd: priced.cacheSavedUsd,
+    cacheHitRate: priced.cacheHitRate,
+    pricingStatus: priced.pricingStatus,
+    modelCosts: Object.keys(priced.modelCosts).length > 0 ? priced.modelCosts : undefined,
+    activityBreakdown: priced.activityBreakdown
   };
 }
 
@@ -816,17 +929,18 @@ function buildDashboardAnalytics(
   const unavailableNote = pricingSnapshot ? 'No pricing match.' : pricingError ?? 'Pricing data unavailable.';
   const modelUsage = Array.from(modelTotals.entries())
     .map(([model, accumulator]): ModelUsageBreakdown => {
+      const breakdown = accumulator.breakdownAvailable
+        ? {
+            inputTokens: accumulator.inputTokens,
+            outputTokens: accumulator.outputTokens,
+            cacheReadTokens: accumulator.cacheReadTokens,
+            cacheWriteTokens: accumulator.cacheWriteTokens,
+            reasoningTokens: accumulator.reasoningTokens,
+            totalTokens: accumulator.totalTokens
+          }
+        : undefined;
       const costResult = calculateModelCost(
-        accumulator.breakdownAvailable
-          ? {
-              inputTokens: accumulator.inputTokens,
-              outputTokens: accumulator.outputTokens,
-              cacheReadTokens: accumulator.cacheReadTokens,
-              cacheWriteTokens: accumulator.cacheWriteTokens,
-              reasoningTokens: accumulator.reasoningTokens,
-              totalTokens: accumulator.totalTokens
-            }
-          : undefined,
+        breakdown,
         pricingSnapshot ? resolvePricing?.(model) : undefined,
         unavailableNote
       );
@@ -836,6 +950,9 @@ function buildDashboardAnalytics(
         totalTokens: accumulator.totalTokens,
         sessionCount: accumulator.sessionIds.size,
         costUsd: costResult.costUsd,
+        cacheSavedUsd: costResult.cacheSavedUsd,
+        cacheHitRate: costResult.cacheHitRate,
+        breakdown,
         pricingStatus: costResult.pricingStatus,
         pricingNote: costResult.pricingNote
       };
@@ -846,6 +963,7 @@ function buildDashboardAnalytics(
     .filter((entry) => entry.pricingStatus === 'unpriced')
     .map((entry) => entry.model);
   const totalCostUsd = modelUsage.reduce((sum, entry) => sum + (entry.costUsd ?? 0), 0);
+  const totalCacheSavedUsd = modelUsage.reduce((sum, entry) => sum + (entry.cacheSavedUsd ?? 0), 0);
   const pricedModelCount = modelUsage.length - missingModels.length;
   
   const totalDashboardTokens = Object.values(sessions).reduce((s, p) => s + p.latest.totalTokens, 0);
@@ -864,6 +982,7 @@ function buildDashboardAnalytics(
           ? 'partial'
           : 'unavailable',
     totalCostUsd,
+    totalCacheSavedUsd: pricedModelCount > 0 ? totalCacheSavedUsd : undefined,
     pricedModelCount,
     unpricedModelCount: missingModels.length,
     missingModels,

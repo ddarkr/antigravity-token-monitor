@@ -1,7 +1,7 @@
 import { mount } from 'svelte';
 import type { ExtensionToWebviewMessage } from '../types';
 import App from './App.svelte';
-import { dashboardState } from './lib/dashboardStore';
+import { dashboardState, selectedSessionId } from './lib/dashboardStore';
 import { vscodeApi } from './lib/vscodeApi';
 
 const appContainer = document.getElementById('app');
@@ -14,6 +14,8 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
   const message = event.data;
   if (message.type === 'dashboard/state') {
     dashboardState.set(message.payload);
+  } else if (message.type === 'dashboard/selectSession') {
+    selectedSessionId.set(message.sessionId);
   }
 });
 

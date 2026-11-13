@@ -62,9 +62,10 @@ describe('SidebarApp', () => {
 
   it('displays cost when pricing is available', () => {
     dashboardState.set(mockDashboardState);
-    const { getByText } = render(SidebarApp);
-    // mockDashboardState has pricing.totalCostUsd = 0.0041
-    expect(getByText('$0.0041')).toBeTruthy();
+    const { getAllByText, getByText } = render(SidebarApp);
+    // Both SidebarKpi total cost and Session 1 row display $0.0041
+    expect(getAllByText('$0.0041').length).toBeGreaterThanOrEqual(2);
+    expect(getByText(/缓存省 \$0\.0012/)).toBeTruthy();
   });
 
   it('shows estimated session indicator', () => {

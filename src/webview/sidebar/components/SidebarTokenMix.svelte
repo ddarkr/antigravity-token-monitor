@@ -64,7 +64,7 @@
     height: 16px;
     border-radius: 8px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-muted);
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
   .segment {

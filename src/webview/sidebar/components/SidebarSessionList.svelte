@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DashboardSession } from '../../../types';
-  import { formatCompact, formatRelative } from '../../lib/formatters';
+  import { formatCompact, formatRelative, formatUsd } from '../../lib/formatters';
 
   export let sessions: DashboardSession[];
   export let onOpenSession: (sessionId: string) => void;
@@ -40,6 +40,10 @@
             <span>{formatRelative(session.lastModifiedMs)}</span>
             <span>•</span>
             <span>{session.messageCount} 条消息</span>
+            {#if session.costUsd !== undefined}
+              <span>•</span>
+              <span>{formatUsd(session.costUsd)}</span>
+            {/if}
             {#if session.latestDelta.totalTokens > 0}
               <span class="delta">+{formatCompact(session.latestDelta.totalTokens)}</span>
             {/if}
@@ -61,7 +65,7 @@
       </button>
     {:else if expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        Show less
+        收起
       </button>
     {/if}
 
@@ -126,7 +130,7 @@
     flex-direction: column;
     gap: 2px;
     padding: var(--spacing-sm);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -136,7 +140,7 @@
     transition: background 120ms, border-color 120ms;
   }
   .session-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-hover);
     border-color: var(--line);
   }
   .session-item.archived {
@@ -173,13 +177,13 @@
     align-items: baseline;
   }
   .delta {
-    color: var(--accent-strong);
+    color: var(--accent);
     font-family: var(--code-font);
     font-weight: 500;
   }
   .session-bar-track {
     height: 2px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-muted);
     border-radius: 1px;
     overflow: hidden;
     margin-top: 1px;

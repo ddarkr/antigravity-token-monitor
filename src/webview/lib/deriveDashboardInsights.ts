@@ -132,16 +132,38 @@ export function deriveDashboardInsights(state: DashboardState, filter: DateFilte
       if (acc.totalTokens <= 0) continue;
       const baseInfo = state.analytics.modelUsage.find(m => m.model === model);
       let costUsd: number | undefined;
+      let cacheSavedUsd: number | undefined;
 
       if (baseInfo && baseInfo.costUsd !== undefined && baseInfo.totalTokens > 0) {
-        costUsd = (baseInfo.costUsd / baseInfo.totalTokens) * acc.totalTokens;
+        const ratio = acc.totalTokens / baseInfo.totalTokens;
+        costUsd = baseInfo.costUsd * ratio;
+        if (baseInfo.cacheSavedUsd !== undefined) {
+          cacheSavedUsd = baseInfo.cacheSavedUsd * ratio;
+        }
       }
+
+      const categorizedSum = acc.inputTokens + acc.outputTokens + acc.cacheReadTokens + acc.cacheWriteTokens + acc.reasoningTokens;
+      const breakdown = categorizedSum > 0
+        ? {
+            inputTokens: acc.inputTokens,
+            outputTokens: acc.outputTokens,
+            cacheReadTokens: acc.cacheReadTokens,
+            cacheWriteTokens: acc.cacheWriteTokens,
+            reasoningTokens: acc.reasoningTokens,
+            totalTokens: acc.totalTokens
+          }
+        : undefined;
+      const cacheDenom = acc.inputTokens + acc.cacheReadTokens;
+      const cacheHitRate = cacheDenom > 0 ? acc.cacheReadTokens / cacheDenom : baseInfo?.cacheHitRate;
 
       modelUsage.push({
         model,
         totalTokens: acc.totalTokens,
         sessionCount: acc.sessionIds.size,
         costUsd,
+        cacheSavedUsd,
+        cacheHitRate,
+        breakdown,
         pricingStatus: baseInfo?.pricingStatus ?? 'unpriced',
         pricingNote: baseInfo?.pricingNote
       });
@@ -153,12 +175,14 @@ export function deriveDashboardInsights(state: DashboardState, filter: DateFilte
       .map(item => {
         const tokens = Math.round(item.totalTokens * tokenRatio);
         const cost = item.costUsd !== undefined ? item.costUsd * tokenRatio : undefined;
+        const cacheSaved = item.cacheSavedUsd !== undefined ? item.cacheSavedUsd * tokenRatio : undefined;
         const sCount = Math.max(tokens > 0 ? 1 : 0, Math.min(item.sessionCount, filteredSessions.length));
         return {
           ...item,
           totalTokens: tokens,
           sessionCount: sCount,
-          costUsd: cost
+          costUsd: cost,
+          cacheSavedUsd: cacheSaved
         };
       })
       .filter(item => item.totalTokens > 0)
@@ -170,10 +194,14 @@ export function deriveDashboardInsights(state: DashboardState, filter: DateFilte
     : modelUsage.reduce((sum, entry) => sum + (entry.costUsd ?? 0), 0);
 
   const pricedModelCount = modelUsage.filter(m => m.pricingStatus === 'priced' && m.costUsd !== undefined).length;
+  const totalCacheSavedUsd = filter.range === 'all'
+    ? state.pricing.totalCacheSavedUsd
+    : (pricedModelCount > 0 ? modelUsage.reduce((sum, entry) => sum + (entry.cacheSavedUsd ?? 0), 0) : undefined);
 
   const pricing: DashboardPricingSummary = {
     ...state.pricing,
     totalCostUsd,
+    totalCacheSavedUsd,
     pricedModelCount,
     message: filter.range === 'all'
       ? state.pricing.message

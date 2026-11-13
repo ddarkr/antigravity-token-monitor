@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ModelUsageBreakdown } from '../../types';
-  import { formatNumber, formatUsd } from '../lib/formatters';
+  import { formatNumber, formatPercent, formatUsd } from '../lib/formatters';
 
   export let models: ModelUsageBreakdown[];
 
@@ -24,8 +24,14 @@
                 {formatNumber(model.totalTokens)} Tokens • {model.sessionCount} 个会话
                 {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
                   • {formatUsd(model.costUsd)}
+                  {#if model.cacheSavedUsd !== undefined && model.cacheSavedUsd > 0}
+                    • 省 {formatUsd(model.cacheSavedUsd)}
+                  {/if}
                 {:else if model.pricingNote}
                   • {model.pricingNote}
+                {/if}
+                {#if model.cacheHitRate !== undefined}
+                  • 命中 {formatPercent(model.cacheHitRate)}
                 {/if}
               </span>
             </div>
@@ -58,7 +64,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -89,6 +95,8 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    flex-wrap: wrap;
+    gap: 2px 10px;
   }
   .model-name {
     font-size: 12px;
@@ -99,18 +107,19 @@
   .model-stats {
     font-size: 11px;
     color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
   .bar-container {
-    height: 4px;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 2px;
+    height: 5px;
+    background: var(--surface-muted);
+    border-radius: 3px;
     overflow: hidden;
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
   .bar {
     height: 100%;
     background: linear-gradient(90deg, var(--accent), var(--accent-strong));
-    border-radius: 2px;
+    border-radius: 3px;
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .empty-state {

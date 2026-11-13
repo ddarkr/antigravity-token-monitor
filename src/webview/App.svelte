@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { dashboardState } from './lib/dashboardStore';
+  import { dashboardState, selectedSessionId } from './lib/dashboardStore';
   import { deriveDashboardInsights, type DateFilterOption } from './lib/deriveDashboardInsights';
   import DateFilterBar from './components/DateFilterBar.svelte';
   import KpiStrip from './components/KpiStrip.svelte';
   import SessionLeaderboard from './components/SessionLeaderboard.svelte';
+  import SessionDetailModal from './components/SessionDetailModal.svelte';
   import ActivityHeatmap from './components/ActivityHeatmap.svelte';
   import ModelUsage from './components/ModelUsage.svelte';
   import SourceModeBreakdown from './components/SourceModeBreakdown.svelte';
@@ -15,9 +16,20 @@
   let dateFilter: DateFilterOption = { range: 'all' };
 
   $: insights = $dashboardState ? deriveDashboardInsights($dashboardState, dateFilter) : null;
+  $: selectedSession = ($dashboardState && $selectedSessionId)
+    ? ($dashboardState.sessions.find((s) => s.sessionId === $selectedSessionId) ?? null)
+    : null;
 
   function handleFilterChange(e: CustomEvent<DateFilterOption>) {
     dateFilter = e.detail;
+  }
+
+  function handleSelectSession(e: CustomEvent<string>) {
+    selectedSessionId.set(e.detail);
+  }
+
+  function handleCloseModal() {
+    selectedSessionId.set(null);
   }
 </script>
 
@@ -37,9 +49,16 @@
         </section>
 
         <aside aria-label="Operations Rail" class="operations-rail">
-          <TokenBreakdownPanel breakdown={insights.tokenBreakdown} />
+          <TokenBreakdownPanel
+            breakdown={insights.tokenBreakdown}
+            cacheSavedUsd={insights.pricing.totalCacheSavedUsd}
+          />
         </aside>
       </div>
+
+      <section aria-label="Session Deck" class="session-deck">
+        <SessionLeaderboard sessions={insights.sortedSessions} on:select={handleSelectSession} />
+      </section>
 
       <section aria-label="System Status & Coverage" class="bottom-cards">
         <SourceModeBreakdown coverage={insights.analytics.rpcCoverage} exportedInLastRun={insights.exportStatus.lastExportedCount} />
@@ -47,12 +66,10 @@
         <Configuration state={insights} />
         <AboutMetrics />
       </section>
-
-      <section aria-label="Session Deck" class="session-deck">
-        <SessionLeaderboard sessions={insights.sortedSessions} />
-      </section>
     </main>
   </div>
+
+  <SessionDetailModal session={selectedSession} on:close={handleCloseModal} />
 {:else}
   <div class="loading">正在加载仪表盘数据...</div>
 {/if}
@@ -89,8 +106,10 @@
     gap: var(--spacing-md);
   }
   .bottom-cards {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: var(--spacing-md);
+    align-items: stretch;
   }
   .operations-rail {
     display: flex;
@@ -101,7 +120,6 @@
   }
   .session-deck {
     width: 100%;
-    margin-top: var(--spacing-md);
   }
   .loading {
     padding: 42px 20px;

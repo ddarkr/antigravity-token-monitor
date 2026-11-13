@@ -1,7 +1,8 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { resolveModelPlaceholder } from '../modelAliases';
-import { ModelTokenBreakdown, SessionParsePlan, SessionTotals, TokenBreakdown } from '../types';
+import { ModelTokenBreakdown, SessionActivityBreakdown, SessionParsePlan, SessionTotals, TokenBreakdown } from '../types';
+import { aggregateActivityBreakdown, extractStepActivityRow, StepActivityRow } from './activityClassifier';
 
 const TEXT_EXTENSIONS = new Set(['.json', '.jsonl', '.md', '.txt', '.log', '.yaml', '.yml']);
 const LABEL_FILES = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
@@ -13,6 +14,7 @@ type StructuredSignalResult = {
   messageCount: number;
   modelTotals: Record<string, number>;
   modelBreakdowns: Record<string, ModelTokenBreakdown>;
+  activityRows: StepActivityRow[];
 };
 
 export class AntigravitySessionParser {
@@ -22,6 +24,7 @@ export class AntigravitySessionParser {
     const reported: TokenBreakdown = emptyBreakdown();
     const modelTotals: Record<string, number> = {};
     const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
+    const activityRows: StepActivityRow[] = [];
     let messageCount = 0;
     let evidenceCount = 0;
     let hasUsageArtifactEvidence = false;
@@ -51,14 +54,18 @@ export class AntigravitySessionParser {
           text,
           messageCount: parsedMessageCount,
           modelTotals: parsedModelTotals,
-          modelBreakdowns: parsedModelBreakdowns
+          modelBreakdowns: parsedModelBreakdowns,
+          activityRows: parsedActivityRows
         } = extractStructuredSignals(content, ext);
 
         messageCount += parsedMessageCount;
         estimatedText += text;
+        if (parsedActivityRows.length > 0 && baseName !== 'usage.jsonl') {
+          activityRows.push(...parsedActivityRows);
+        }
 
         // Avoid double-counting: when usage.jsonl already provided reported evidence,
-        // steps.jsonl should only contribute messageCount (steps carry duplicate usage totals).
+        // steps.jsonl should only contribute messageCount & activity breakdown.
         if (candidate.source === 'rpc-artifact' && baseName === 'steps.jsonl' && hasUsageArtifactEvidence) {
           continue;
         }
@@ -76,7 +83,10 @@ export class AntigravitySessionParser {
     }
 
     const label = await this.resolveLabel(candidate);
-    return evidenceCount > 0 ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount) : finalizeEstimated(candidate, label, estimatedText, messageCount);
+    const activityBreakdown = aggregateActivityBreakdown(activityRows);
+    return evidenceCount > 0
+      ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount, activityBreakdown)
+      : finalizeEstimated(candidate, label, estimatedText, messageCount, activityBreakdown);
   }
 
   private async resolveLabel(candidate: SessionParsePlan): Promise<string> {
@@ -129,6 +139,7 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
   let extractedText = '';
   const modelTotals: Record<string, number> = {};
   const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
+  const activityRows: StepActivityRow[] = [];
 
   if (ext === '.jsonl') {
     const lines = content.split(/\r?\n/);
@@ -147,31 +158,49 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
         mergeModelTotals(modelTotals, signal.modelTotals);
         mergeModelBreakdowns(modelBreakdowns, signal.modelBreakdowns);
         hits += signal.hits;
+        const activityRow = extractStepActivityRow(parsed, signal.breakdown.totalTokens, signal.modelTotals);
+        if (activityRow) {
+          activityRows.push(activityRow);
+        }
       } catch {
       }
     }
 
-    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, activityRows };
   }
 
   const trimmed = content.trim();
   if (!trimmed) {
-    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, activityRows };
   }
 
   extractedText += `\n${trimmed}`;
   try {
     const parsed = JSON.parse(content) as unknown;
-        messageCount = countMessages(parsed);
+    messageCount = countMessages(parsed);
     const signal = walkForTokenSignals(parsed);
     mergeBreakdown(breakdown, signal.breakdown);
     mergeModelTotals(modelTotals, signal.modelTotals);
     mergeModelBreakdowns(modelBreakdowns, signal.modelBreakdowns);
     hits += signal.hits;
+    if (parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).records)) {
+      for (const item of (parsed as Record<string, unknown>).records as unknown[]) {
+        const itemSignal = walkForTokenSignals(item);
+        const row = extractStepActivityRow(item, itemSignal.breakdown.totalTokens, itemSignal.modelTotals);
+        if (row) {
+          activityRows.push(row);
+        }
+      }
+    } else {
+      const row = extractStepActivityRow(parsed, signal.breakdown.totalTokens, signal.modelTotals);
+      if (row) {
+        activityRows.push(row);
+      }
+    }
   } catch {
   }
 
-  return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+  return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, activityRows };
 }
 
 type SignalResult = {
@@ -335,7 +364,8 @@ function finalizeReported(
   modelTotals: Record<string, number>,
   modelBreakdowns: Record<string, ModelTokenBreakdown>,
   evidenceCount: number,
-  messageCount: number
+  messageCount: number,
+  activityBreakdown: SessionActivityBreakdown[]
 ): SessionTotals {
   return {
     sessionId: candidate.sessionId,
@@ -348,12 +378,19 @@ function finalizeReported(
     modelTotals,
     modelBreakdowns,
     messageCount,
+    ...(activityBreakdown.length > 0 ? { activityBreakdown } : {}),
     ...breakdown,
     totalTokens: normalizeTotal(breakdown)
   };
 }
 
-function finalizeEstimated(candidate: SessionParsePlan, label: string, text: string, messageCount: number): SessionTotals {
+function finalizeEstimated(
+  candidate: SessionParsePlan,
+  label: string,
+  text: string,
+  messageCount: number,
+  activityBreakdown: SessionActivityBreakdown[]
+): SessionTotals {
   const estimatedTotal = estimateTokens(text);
   return {
     sessionId: candidate.sessionId,
@@ -366,6 +403,7 @@ function finalizeEstimated(candidate: SessionParsePlan, label: string, text: str
     modelTotals: {},
     modelBreakdowns: {},
     messageCount,
+    ...(activityBreakdown.length > 0 ? { activityBreakdown } : {}),
     inputTokens: Math.round(estimatedTotal * 0.62),
     outputTokens: Math.round(estimatedTotal * 0.38),
     cacheReadTokens: 0,

@@ -77,7 +77,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--surface-muted);
     padding: 3px;
     border-radius: 6px;
     border: 1px solid var(--surface-line);
@@ -96,13 +96,12 @@
   }
   .pill:hover {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-hover);
   }
   .pill.active {
-    color: #ffffff;
-    background: rgba(59, 130, 246, 0.25);
-    border-color: rgba(59, 130, 246, 0.6);
-    box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
     font-weight: 600;
   }
   .custom-picker {
@@ -112,7 +111,7 @@
     animation: fade-in 0.18s ease;
   }
   .date-input {
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--surface-muted);
     border: 1px solid var(--line-strong);
     color: var(--text);
     border-radius: 4px;
@@ -120,11 +119,11 @@
     font-size: 11px;
     font-family: var(--code-font);
     outline: none;
-    color-scheme: dark;
+    color-scheme: dark light;
   }
   .date-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 0 0 2px var(--accent-soft);
   }
   .range-sep {
     font-size: 11px;

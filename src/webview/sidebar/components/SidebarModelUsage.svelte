@@ -29,9 +29,12 @@
             ></div>
           </div>
           <div class="model-meta">
-            {model.sessionCount} session{model.sessionCount !== 1 ? 's' : ''}
+            {model.sessionCount} 个会话
             {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
               • {formatUsd(model.costUsd)}
+              {#if model.cacheSavedUsd !== undefined && model.cacheSavedUsd > 0}
+                • 省 {formatUsd(model.cacheSavedUsd)}
+              {/if}
             {/if}
           </div>
         </div>
@@ -39,7 +42,7 @@
     </div>
 
     {#if hiddenCount > 0}
-      <div class="more-label">+{hiddenCount} more model{hiddenCount !== 1 ? 's' : ''}</div>
+      <div class="more-label">另有 {hiddenCount} 个模型</div>
     {/if}
   {:else}
     <div class="empty">暂无模型数据。</div>
@@ -97,7 +100,7 @@
   }
   .bar-track {
     height: 3px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-muted);
     border-radius: 1.5px;
     overflow: hidden;
     box-shadow: inset 0 0 0 1px var(--surface-line);

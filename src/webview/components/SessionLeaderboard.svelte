@@ -1,35 +1,56 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import type { DashboardSession } from '../../types';
-  import { formatNumber, formatDate, formatSource } from '../lib/formatters';
+  import { formatDate, formatNumber, formatPercent, formatSource, formatUsd } from '../lib/formatters';
   import SparkBars from './SparkBars.svelte';
 
   export let sessions: DashboardSession[];
 
+  const dispatch = createEventDispatcher<{ select: string }>();
 
+  function selectSession(sessionId: string) {
+    dispatch('select', sessionId);
+  }
+
+  function handleRowKeydown(event: KeyboardEvent, sessionId: string) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectSession(sessionId);
+    }
+  }
 </script>
 
 <article class="analytical-table-container">
   <div class="table-header">
     <h2 class="section-title">会话明细分析</h2>
-    <div class="table-meta">按最近活跃时间排序</div>
+    <div class="table-meta">按最近活跃时间排序 · 点击行查看模型与工具拆解</div>
   </div>
 
   <div class="table-scroll-area">
     <table class="data-table">
       <thead>
         <tr>
-          <th class="col-session">Session</th>
-          <th class="col-mode">Mode</th>
-          <th class="col-messages num">Messages</th>
-          <th class="col-total num">Total Tokens</th>
-          <th class="col-delta num">Latest Delta</th>
-          <th class="col-pulse">Activity Pulse</th>
+          <th class="col-session">会话名称</th>
+          <th class="col-mode">状态与来源</th>
+          <th class="col-messages num">消息数</th>
+          <th class="col-total num">总 Tokens</th>
+          <th class="col-cost num">预估费用</th>
+          <th class="col-delta num">近期增量</th>
+          <th class="col-pulse">活跃趋势</th>
+          <th class="col-action" aria-hidden="true"></th>
         </tr>
       </thead>
       <tbody>
         {#if sessions.length > 0}
           {#each sessions as session (session.sessionId)}
-            <tr class="data-row">
+            <tr
+              class="data-row clickable"
+              tabindex="0"
+              role="button"
+              aria-label={`查看会话详情：${session.label}`}
+              on:click={() => selectSession(session.sessionId)}
+              on:keydown={(e) => handleRowKeydown(e, session.sessionId)}
+            >
               <td class="col-session">
                 <div class="session-info">
                   <div class="session-name">{session.label}</div>
@@ -57,6 +78,20 @@
               <td class="col-total num">
                 <span class="value-large">{formatNumber(session.latest.totalTokens)}</span>
               </td>
+              <td class="col-cost num">
+                {#if session.costUsd !== undefined}
+                  <div class="cost-cell">
+                    <span class="value-large">{formatUsd(session.costUsd)}</span>
+                    {#if session.cacheSavedUsd !== undefined && session.cacheSavedUsd > 0}
+                      <span class="cost-sub">省 {formatUsd(session.cacheSavedUsd)}</span>
+                    {:else if session.cacheHitRate !== undefined}
+                      <span class="cost-sub">命中 {formatPercent(session.cacheHitRate)}</span>
+                    {/if}
+                  </div>
+                {:else}
+                  <span class="delta-neutral">—</span>
+                {/if}
+              </td>
               <td class="col-delta num">
                 {#if session.latestDelta.totalTokens > 0}
                   <span class="delta-positive">+{formatNumber(session.latestDelta.totalTokens)}</span>
@@ -69,11 +104,14 @@
                   <SparkBars series={session.recentTotals} />
                 </div>
               </td>
+              <td class="col-action" aria-hidden="true">
+                <span class="row-chevron">›</span>
+              </td>
             </tr>
           {/each}
         {:else}
           <tr>
-            <td colspan="6" class="empty-state">
+            <td colspan="8" class="empty-state">
               <div class="empty-message">暂未发现 Antigravity 会话记录。</div>
               <div class="empty-submessage">请确认会话目录并在下次同步时查看。</div>
             </td>
@@ -100,7 +138,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -130,20 +168,31 @@
     letter-spacing: 0.08em;
     color: var(--muted);
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
     white-space: nowrap;
     text-align: left;
   }
   td {
-    padding: var(--spacing-md) var(--spacing-md);
+    padding: 12px var(--spacing-md);
     border-bottom: 1px solid var(--surface-line);
     vertical-align: middle;
   }
   tbody tr {
     transition: background-color 120ms;
   }
+  tbody tr.clickable {
+    cursor: pointer;
+  }
   tbody tr:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle);
+  }
+  tbody tr.clickable:hover .row-chevron {
+    color: var(--accent);
+    transform: translateX(2px);
+  }
+  tbody tr:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
   }
   tbody tr:last-child td {
     border-bottom: none;
@@ -153,12 +202,34 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .col-session { width: 40%; }
-  .col-mode { width: 20%; }
-  .col-messages { width: 10%; }
-  .col-total { width: 15%; }
-  .col-delta { width: 15%; }
-  .col-pulse { width: 10%; }
+  .col-session { width: 32%; }
+  .col-mode { width: 18%; }
+  .col-messages { width: 8%; }
+  .col-total { width: 13%; }
+  .col-cost { width: 12%; }
+  .col-delta { width: 9%; }
+  .col-pulse { width: 6%; }
+  .col-action { width: 2%; text-align: right; padding-left: 4px; }
+
+  .row-chevron {
+    display: inline-block;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 140ms ease, color 140ms ease;
+  }
+
+  .cost-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .cost-sub {
+    font-size: 10px;
+    color: var(--accent);
+    font-family: var(--code-font);
+  }
 
   .session-info {
     display: flex;
@@ -199,41 +270,41 @@
     letter-spacing: 0.02em;
   }
   .status-archived {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle);
     color: var(--muted);
-    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border: 1px dashed var(--line);
   }
   .mode-reported {
-    background: rgba(136, 216, 176, 0.1);
-    color: var(--accent-strong);
-    border: 1px solid rgba(136, 216, 176, 0.2);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
   }
   .mode-estimated {
-    background: rgba(247, 200, 115, 0.1);
+    background: color-mix(in srgb, var(--warm) 14%, transparent);
     color: var(--warm);
-    border: 1px solid rgba(247, 200, 115, 0.2);
+    border: 1px solid color-mix(in srgb, var(--warm) 35%, transparent);
   }
   .source-rpc-artifact {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-muted);
     color: var(--muted);
     border: 1px solid var(--line);
   }
   .source-filesystem {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     color: var(--muted);
     border: 1px solid var(--line);
   }
 
   .value-large {
-    font-size: 14px;
-    font-weight: 400;
+    font-size: 13px;
+    font-weight: 500;
     font-family: var(--code-font);
     color: var(--text);
   }
   .delta-positive {
-    color: var(--accent-strong);
+    color: var(--accent);
     font-weight: 500;
-    background: rgba(136, 216, 176, 0.1);
+    background: var(--accent-soft);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: var(--code-font);

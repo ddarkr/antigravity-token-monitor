@@ -70,7 +70,7 @@
     justify-content: space-between;
     padding: var(--spacing-sm) var(--spacing-md);
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     position: sticky;
     top: 0;
     z-index: 10;

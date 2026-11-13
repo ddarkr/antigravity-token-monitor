@@ -56,9 +56,19 @@ type PricingCacheEntry = LiteLlmPricingSnapshot & {
 
 export type ModelCostResult = {
   costUsd?: number;
+  cacheSavedUsd?: number;
+  cacheHitRate?: number;
   pricingStatus: 'priced' | 'unpriced';
   pricingNote?: string;
 };
+
+export function calculateCacheHitRate(cacheReadTokens: number, inputTokens: number): number | undefined {
+  const denominator = Math.max(0, cacheReadTokens) + Math.max(0, inputTokens);
+  if (denominator <= 0) {
+    return undefined;
+  }
+  return Math.max(0, cacheReadTokens) / denominator;
+}
 
 export class LiteLlmPricingCatalog {
   private cache: PricingCacheEntry | undefined;
@@ -208,7 +218,14 @@ export function calculateModelCost(
     + (breakdown.cacheWriteTokens * (cacheWriteCost ?? 0))
     + (breakdown.reasoningTokens * (reasoningCost ?? 0));
 
-  return { costUsd, pricingStatus: 'priced' };
+  const cacheHitRate = calculateCacheHitRate(breakdown.cacheReadTokens, breakdown.inputTokens);
+  const cacheSavedUsd = inputCost !== undefined
+    && pricing.cache_read_input_token_cost !== undefined
+    && inputCost > pricing.cache_read_input_token_cost
+    ? breakdown.cacheReadTokens * (inputCost - pricing.cache_read_input_token_cost)
+    : 0;
+
+  return { costUsd, cacheSavedUsd, cacheHitRate, pricingStatus: 'priced' };
 }
 
 export function parseLiteLlmPriceMap(input: unknown): Record<string, LiteLlmModelPricing> {

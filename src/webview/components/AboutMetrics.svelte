@@ -11,13 +11,13 @@
     <div class="info-card">
       <ul class="info-list">
         <li>
-          <span class="highlight">Reported</span> usage comes from structured token fields in the session data.
+          <span class="highlight">Reported</span>：直接读取会话及 RPC 产物中的结构化 Token 字段。
         </li>
         <li>
-          <span class="highlight">Estimated</span> usage is a fallback calculation based on text length when structured data is missing.
+          <span class="highlight">Estimated</span>：当缺少结构化记录时，依据文本长度自动估算。
         </li>
         <li>
-          Polling runs in the extension host to keep this dashboard lightweight.
+          扩展宿主后台异步轮询采集，保持仪表盘界面轻量流畅。
         </li>
       </ul>
     </div>
@@ -41,7 +41,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -60,10 +60,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+    flex: 1;
   }
 
   .info-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid var(--surface-line);
     border-radius: 8px;
     padding: var(--spacing-sm);

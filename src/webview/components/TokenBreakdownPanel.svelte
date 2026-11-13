@@ -1,12 +1,16 @@
 <script lang="ts">
   import type { TokenBreakdown } from '../../types';
-  import { formatNumber } from '../lib/formatters';
+  import { formatNumber, formatPercent, formatUsd } from '../lib/formatters';
 
   export let breakdown: TokenBreakdown;
+  export let cacheSavedUsd: number | undefined = undefined;
 
   $: cacheTokens = breakdown.cacheReadTokens + breakdown.cacheWriteTokens;
   $: categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + cacheTokens + breakdown.reasoningTokens;
   $: total = Math.max(categorizedTotal, 1);
+  $: cacheHitRate = (breakdown.inputTokens + breakdown.cacheReadTokens) > 0
+    ? breakdown.cacheReadTokens / (breakdown.inputTokens + breakdown.cacheReadTokens)
+    : undefined;
 
   $: items = [
     { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: '#3b82f6' },
@@ -35,6 +39,12 @@
       {#if breakdown.totalTokens !== categorizedTotal}
         <span>• 占已知分类的 {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)}</span>
       {/if}
+      {#if cacheHitRate !== undefined}
+        <span>• 缓存命中率 {formatPercent(cacheHitRate)}</span>
+      {/if}
+      {#if cacheSavedUsd !== undefined && cacheSavedUsd > 0}
+        <span>• 节省 {formatUsd(cacheSavedUsd)}</span>
+      {/if}
     </div>
 
     <div class="stacked-bar">
@@ -61,37 +71,39 @@
 
 <style>
   .analytical-card {
-    background: var(--canvas-bg);
-    display: flex;
-    flex-direction: column;
-  }
-  .card-header {
-    padding: 0 0 var(--spacing-md) 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  .section-title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    font-family: var(--font-display);
-    letter-spacing: -0.01em;
-  }
-  .card-meta {
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .card-body {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    overflow: hidden;
     box-shadow: var(--shadow-elevated);
+  }
+  .card-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface-subtle);
+  }
+  .section-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card-meta {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .card-body {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
   }
   .total-display {
     display: flex;
@@ -99,15 +111,15 @@
     align-items: flex-start;
   }
   .total-number {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 300;
     color: var(--text);
-    line-height: 1;
+    line-height: 1.1;
     font-family: var(--code-font);
     letter-spacing: -0.02em;
   }
   .total-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -116,17 +128,17 @@
   }
   .coverage-copy {
     display: flex;
-    gap: var(--spacing-sm);
+    gap: 6px;
     flex-wrap: wrap;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 11px;
   }
   .stacked-bar {
     display: flex;
-    height: 32px;
-    border-radius: 16px;
+    height: 22px;
+    border-radius: 11px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted);
     width: 100%;
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
@@ -150,21 +162,21 @@
 
   .legend {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: var(--spacing-sm);
   }
   .legend-item {
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: 8px;
+    padding: var(--spacing-sm);
+    background: var(--surface-subtle);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--surface-line);
     transition: background 0.15s, border-color 0.15s;
   }
   .legend-item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-hover);
   }
   .legend-item.input:hover { border-color: rgba(59, 130, 246, 0.4); }
   .legend-item.output:hover { border-color: rgba(16, 185, 129, 0.4); }

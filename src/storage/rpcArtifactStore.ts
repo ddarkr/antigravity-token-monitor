@@ -13,6 +13,7 @@ type ArtifactPayload = {
 
 const CACHE_DIR = '.token-monitor';
 const CACHE_VERSION = 'v2';
+export const CURRENT_ARTIFACT_SCHEMA_VERSION = 2;
 
 export class RpcArtifactStore {
   constructor(private readonly sessionRoot: string) {}
@@ -62,7 +63,7 @@ export class RpcArtifactStore {
     await writeAtomic(this.getUsagePath(payload.sessionId), usageContent);
 
     const manifest: RpcArtifactManifest = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_ARTIFACT_SCHEMA_VERSION,
       sessionId: payload.sessionId,
       serverLastModifiedMs: payload.serverLastModifiedMs,
       stepCount: payload.stepCount,
@@ -78,7 +79,7 @@ export class RpcArtifactStore {
   async recordFailure(sessionId: string, error: unknown): Promise<void> {
     const previous = await this.loadManifest(sessionId);
     const next: RpcArtifactManifest = {
-      schemaVersion: 1,
+      schemaVersion: previous?.schemaVersion ?? CURRENT_ARTIFACT_SCHEMA_VERSION,
       sessionId,
       serverLastModifiedMs: previous?.serverLastModifiedMs,
       stepCount: previous?.stepCount,

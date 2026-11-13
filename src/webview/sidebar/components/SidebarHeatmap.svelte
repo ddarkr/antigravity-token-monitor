@@ -100,14 +100,14 @@
   }
   .cell:not(.cell--empty):hover {
     transform: scale(1.35);
-    border-color: #ffffff;
+    border-color: var(--text);
     z-index: 5;
     position: relative;
     cursor: pointer;
   }
   .cell.lvl-0 {
-    background-color: rgba(255, 255, 255, 0.045);
-    border-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--heatmap-0-bg);
+    border-color: var(--heatmap-0-border);
   }
   .cell.lvl-1 {
     background-color: #0d4429;
@@ -142,7 +142,7 @@
   }
   .detail-tokens {
     font-family: var(--code-font);
-    color: #4ade80;
+    color: var(--accent);
     font-weight: 600;
   }
   .detail-cost {

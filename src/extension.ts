@@ -31,7 +31,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sidebarProvider = new SidebarViewProvider(
     context.extensionUri,
     () => { void service.exportNow({ force: false, refreshAfter: true }); },
-    () => { void vscode.commands.executeCommand(`${EXTENSION_ID}.openDashboard`); }
+    (sessionId?: string) => { void vscode.commands.executeCommand(`${EXTENSION_ID}.openDashboard`, sessionId); }
   );
 
   context.subscriptions.push(service, panel, statusBar, sidebarProvider, outputChannel);
@@ -48,10 +48,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sidebarProvider.update(state);
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.openDashboard`, async () => {
+  context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.openDashboard`, async (sessionId?: string) => {
     panel.show(service.getDashboardState());
+    if (sessionId) {
+      panel.selectSession(sessionId);
+    }
     await service.exportNow({ force: false, refreshAfter: true });
     panel.show(service.getDashboardState());
+    if (sessionId) {
+      panel.selectSession(sessionId);
+    }
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.refreshNow`, async () => {

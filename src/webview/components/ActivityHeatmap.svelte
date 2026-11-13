@@ -290,7 +290,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .header-left {
     display: flex;
@@ -309,9 +309,9 @@
     font-size: 10px;
     padding: 2px 7px;
     border-radius: 4px;
-    background: rgba(57, 211, 83, 0.12);
-    color: #4ade80;
-    border: 1px solid rgba(57, 211, 83, 0.28);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
     font-weight: 600;
   }
   .card-meta {
@@ -319,7 +319,7 @@
     color: var(--muted);
   }
   .highlight-text {
-    color: #4ade80;
+    color: var(--accent);
     font-weight: 600;
   }
   .heatmap-container {
@@ -401,19 +401,19 @@
     transform: scale(1.4);
     z-index: 10;
     position: relative;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7) !important;
-    border-color: #ffffff !important;
+    box-shadow: 0 4px 12px color-mix(in srgb, #000 35%, transparent) !important;
+    border-color: var(--text) !important;
   }
 
   /* HIGH-CONTRAST DISTINCT COLOR SCALE */
-  /* Level 0: Inactive / Empty (Clear outline on dark background) */
+  /* Level 0: Inactive / Empty (Theme-adaptive outline) */
   .heatmap-cell.lvl-0 {
-    background-color: rgba(255, 255, 255, 0.045);
-    border-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--heatmap-0-bg);
+    border-color: var(--heatmap-0-border);
   }
   .heatmap-cell.lvl-0:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.25);
+    background-color: var(--surface-hover);
+    border-color: var(--line-strong);
   }
 
   /* Level 1: Low Usage (Deep Forest / Teal Green - Dark & Muted) */
@@ -450,7 +450,7 @@
     align-items: center;
     margin-top: var(--spacing-sm);
     padding-top: var(--spacing-xs);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--surface-line);
     font-size: 10px;
     color: var(--muted);
   }
@@ -473,7 +473,7 @@
     border-radius: 2px;
     border: 1px solid transparent;
   }
-  .scale-cell.lvl-0 { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.08); }
+  .scale-cell.lvl-0 { background: var(--heatmap-0-bg); border-color: var(--heatmap-0-border); }
   .scale-cell.lvl-1 { background: #0d4429; border-color: #1b6a3f; }
   .scale-cell.lvl-2 { background: #007a3d; border-color: #10b981; }
   .scale-cell.lvl-3 { background: #10b981; border-color: #6ee7b7; box-shadow: 0 0 4px rgba(16, 185, 129, 0.4); }
@@ -554,6 +554,6 @@
   .popover-value--accent {
     font-size: 16px;
     font-weight: 700;
-    color: #4ade80;
+    color: var(--accent);
   }
 </style>

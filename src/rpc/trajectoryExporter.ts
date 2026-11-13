@@ -1,7 +1,7 @@
 import { MonitorConfig } from '../config';
 import { resolveModelPlaceholder } from '../modelAliases';
 import { SessionScanCandidate, RpcArtifactManifest } from '../types';
-import { RpcArtifactStore } from '../storage/rpcArtifactStore';
+import { CURRENT_ARTIFACT_SCHEMA_VERSION, RpcArtifactStore } from '../storage/rpcArtifactStore';
 import { AntigravityRpcClient } from './antigravityRpcClient';
 
 type TrajectorySummary = {
@@ -185,7 +185,7 @@ function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest 
     return true;
   }
 
-  if (!previous?.artifactHash) {
+  if (!previous?.artifactHash || previous.schemaVersion !== CURRENT_ARTIFACT_SCHEMA_VERSION) {
     return true;
   }
 
@@ -196,11 +196,15 @@ function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest 
 function serializeSteps(sessionId: string, steps: unknown[]): unknown[] {
   return steps.map((step, index) => {
     const record = step && typeof step === 'object' ? step as Record<string, unknown> : {};
+    const stepType = extractStepType(record);
+    const toolNames = extractToolNames(record);
     return {
       recordType: 'step',
       sessionId,
       stepIndex: index,
       role: extractRole(record),
+      ...(stepType ? { stepType } : {}),
+      ...(toolNames ? { toolNames } : {}),
       timestamp: extractTimestamp(record),
       model: extractModel(record),
       text: extractStepText(record)
@@ -219,16 +223,57 @@ function serializeStepsRedacted(sessionId: string, steps: unknown[]): unknown[] 
   return steps.map((step, index) => {
     const record = step && typeof step === 'object' ? step as Record<string, unknown> : {};
     const usage = extractUsage(record);
+    const stepType = extractStepType(record);
+    const toolNames = extractToolNames(record);
     return {
       recordType: 'step',
       sessionId,
       stepIndex: index,
       role: extractRole(record),
+      ...(stepType ? { stepType } : {}),
+      ...(toolNames ? { toolNames } : {}),
       timestamp: extractTimestamp(record),
       model: extractModel(record),
       ...(usage.totalTokens > 0 ? usage : {})
     };
   });
+}
+
+function extractStepType(input: Record<string, unknown>): string | undefined {
+  return typeof input.type === 'string' && input.type.trim().length > 0
+    ? input.type.trim()
+    : undefined;
+}
+
+function extractToolNames(input: Record<string, unknown>): string[] | undefined {
+  const names: string[] = [];
+  const plannerResponse = input.plannerResponse;
+  if (plannerResponse && typeof plannerResponse === 'object') {
+    const toolCalls = (plannerResponse as Record<string, unknown>).toolCalls;
+    if (Array.isArray(toolCalls)) {
+      for (const call of toolCalls) {
+        if (call && typeof call === 'object') {
+          const name = (call as Record<string, unknown>).name;
+          if (typeof name === 'string' && name.trim().length > 0) {
+            names.push(name.trim());
+          }
+        }
+      }
+    }
+  }
+
+  const metadata = input.metadata;
+  if (metadata && typeof metadata === 'object') {
+    const toolCall = (metadata as Record<string, unknown>).toolCall;
+    if (toolCall && typeof toolCall === 'object') {
+      const name = (toolCall as Record<string, unknown>).name;
+      if (typeof name === 'string' && name.trim().length > 0 && !names.includes(name.trim())) {
+        names.push(name.trim());
+      }
+    }
+  }
+
+  return names.length > 0 ? names : undefined;
 }
 
 function serializeUsage(sessionId: string, metadata: unknown[]): unknown[] {

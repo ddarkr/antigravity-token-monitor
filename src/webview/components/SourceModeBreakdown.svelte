@@ -87,7 +87,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-subtle);
   }
   .section-title {
     margin: 0;
@@ -140,9 +140,9 @@
     color: var(--muted);
   }
   .bar-container {
-    height: 3px;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 1.5px;
+    height: 4px;
+    background: var(--surface-muted);
+    border-radius: 2px;
     overflow: hidden;
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }

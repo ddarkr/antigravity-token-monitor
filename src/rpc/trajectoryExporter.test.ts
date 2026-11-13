@@ -251,6 +251,52 @@ describe('TrajectoryExporter', () => {
     const manifest = await artifactStore.loadManifest('session-keep');
     expect(manifest?.failureCount).toBe(1);
   });
+
+  it('exports redacted stepType and toolNames without plaintext when exportStepsJsonl is false', async () => {
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-exporter-'));
+    const artifactStore = new RpcArtifactStore(sessionRoot);
+
+    vi.spyOn(AntigravityRpcClient.prototype, 'flush').mockResolvedValue();
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'session-steps-meta', lastModifiedMs: 500, stepCount: 2 }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectorySteps').mockResolvedValue([
+      {
+        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+        plannerResponse: {
+          response: 'secret conversation content',
+          toolCalls: [{ name: 'run_command', argumentsJson: '{"cmd":"secret"}' }]
+        },
+        metadata: {
+          modelUsage: { model: 'claude-sonnet-4-6', inputOutputTokens: { inputTokens: 100, outputTokens: 20 } }
+        }
+      },
+      {
+        type: 'CORTEX_STEP_TYPE_RUN_COMMAND',
+        metadata: { toolCall: { name: 'run_command' } }
+      }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectoryMetadata').mockResolvedValue([]);
+
+    await exporterFor(sessionRoot, artifactStore, []).exportChangedSessions([
+      buildCandidate(sessionRoot, 'session-steps-meta', 500)
+    ]);
+
+    const tokenFiles = await artifactStore.getTokenFilePaths('session-steps-meta');
+    const stepsPath = tokenFiles.find((p) => p.endsWith('steps.jsonl'))!;
+    const rawSteps = await readFile(stepsPath, 'utf8');
+    expect(rawSteps).not.toContain('secret conversation content');
+    expect(rawSteps).not.toContain('argumentsJson');
+
+    const lines = rawSteps.trim().split('\n').map((line) => JSON.parse(line));
+    expect(lines[0].stepType).toBe('CORTEX_STEP_TYPE_PLANNER_RESPONSE');
+    expect(lines[0].toolNames).toEqual(['run_command']);
+    expect(lines[1].stepType).toBe('CORTEX_STEP_TYPE_RUN_COMMAND');
+    expect(lines[1].toolNames).toEqual(['run_command']);
+
+    const manifest = await artifactStore.loadManifest('session-steps-meta');
+    expect(manifest?.schemaVersion).toBe(2);
+  });
 });
 
 function exporterFor(sessionRoot: string, artifactStore: RpcArtifactStore, logs: string[]): TrajectoryExporter {

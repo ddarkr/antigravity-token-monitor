@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  calculateCacheHitRate,
   calculateModelCost,
   LiteLlmPricingCatalog,
   parseLiteLlmPriceMap,
@@ -200,5 +201,41 @@ describe('litellmPricing', () => {
     const fallbackCatalog = new LiteLlmPricingCatalog(partialFailFetch);
     await fallbackCatalog.getSnapshot();
     expect(fallbackCatalog.resolveModelPricing('gemini-4-argon-trial')?.input_cost_per_token).toBe(0.000002);
+  });
+
+  it('calculates cache hit rate and cache savings only when cache discount is present', () => {
+    expect(calculateCacheHitRate(300, 100)).toBeCloseTo(0.75);
+    expect(calculateCacheHitRate(0, 0)).toBeUndefined();
+
+    const discounted = calculateModelCost({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 450
+    }, {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00003,
+      cache_read_input_token_cost: 0.000001
+    }, 'No match');
+
+    expect(discounted.cacheHitRate).toBeCloseTo(0.75);
+    expect(discounted.cacheSavedUsd).toBeCloseTo(0.0027);
+
+    const noDiscount = calculateModelCost({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 450
+    }, {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00003
+    }, 'No match');
+
+    expect(noDiscount.cacheHitRate).toBeCloseTo(0.75);
+    expect(noDiscount.cacheSavedUsd).toBe(0);
   });
 });
