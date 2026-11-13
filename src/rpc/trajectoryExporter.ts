@@ -1,7 +1,7 @@
 import { MonitorConfig } from '../config';
 import { resolveModelPlaceholder } from '../modelAliases';
 import { SessionScanCandidate, RpcArtifactManifest } from '../types';
-import { RpcArtifactStore } from '../storage/rpcArtifactStore';
+import { CURRENT_ARTIFACT_SCHEMA_VERSION, RpcArtifactStore } from '../storage/rpcArtifactStore';
 import { AntigravityRpcClient } from './antigravityRpcClient';
 
 type TrajectorySummary = {
@@ -78,10 +78,18 @@ export class TrajectoryExporter {
           this.log?.(
             `TrajectoryExporter: session=${candidate.sessionId} fetched steps=${payload.steps.length} metadata=${payload.metadata.length}.`
           );
+          if (
+            payload.steps.length === 0
+            && payload.metadata.length === 0
+            && previous?.artifactHash
+            && ((previous.stepCount ?? 0) > 0 || (summary.stepCount ?? 0) > 0)
+          ) {
+            throw new Error('Empty RPC payload received for non-empty session; preserving existing cache.');
+          }
           const next = await this.artifactStore.writeSessionArtifacts({
             sessionId: candidate.sessionId,
             serverLastModifiedMs: summary.lastModifiedMs,
-            stepCount: summary.stepCount,
+            stepCount: summary.stepCount ?? (payload.steps.length > 0 ? payload.steps.length : undefined),
             steps: this.config.exportStepsJsonl
               ? serializeSteps(candidate.sessionId, payload.steps)
               : serializeStepsRedacted(candidate.sessionId, payload.steps),
@@ -177,7 +185,7 @@ function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest 
     return true;
   }
 
-  if (!previous?.artifactHash) {
+  if (!previous?.artifactHash || previous.schemaVersion !== CURRENT_ARTIFACT_SCHEMA_VERSION) {
     return true;
   }
 
@@ -188,11 +196,15 @@ function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest 
 function serializeSteps(sessionId: string, steps: unknown[]): unknown[] {
   return steps.map((step, index) => {
     const record = step && typeof step === 'object' ? step as Record<string, unknown> : {};
+    const stepType = extractStepType(record);
+    const toolNames = extractToolNames(record);
     return {
       recordType: 'step',
       sessionId,
       stepIndex: index,
       role: extractRole(record),
+      ...(stepType ? { stepType } : {}),
+      ...(toolNames ? { toolNames } : {}),
       timestamp: extractTimestamp(record),
       model: extractModel(record),
       text: extractStepText(record)
@@ -211,16 +223,57 @@ function serializeStepsRedacted(sessionId: string, steps: unknown[]): unknown[] 
   return steps.map((step, index) => {
     const record = step && typeof step === 'object' ? step as Record<string, unknown> : {};
     const usage = extractUsage(record);
+    const stepType = extractStepType(record);
+    const toolNames = extractToolNames(record);
     return {
       recordType: 'step',
       sessionId,
       stepIndex: index,
       role: extractRole(record),
+      ...(stepType ? { stepType } : {}),
+      ...(toolNames ? { toolNames } : {}),
       timestamp: extractTimestamp(record),
       model: extractModel(record),
       ...(usage.totalTokens > 0 ? usage : {})
     };
   });
+}
+
+function extractStepType(input: Record<string, unknown>): string | undefined {
+  return typeof input.type === 'string' && input.type.trim().length > 0
+    ? input.type.trim()
+    : undefined;
+}
+
+function extractToolNames(input: Record<string, unknown>): string[] | undefined {
+  const names: string[] = [];
+  const plannerResponse = input.plannerResponse;
+  if (plannerResponse && typeof plannerResponse === 'object') {
+    const toolCalls = (plannerResponse as Record<string, unknown>).toolCalls;
+    if (Array.isArray(toolCalls)) {
+      for (const call of toolCalls) {
+        if (call && typeof call === 'object') {
+          const name = (call as Record<string, unknown>).name;
+          if (typeof name === 'string' && name.trim().length > 0) {
+            names.push(name.trim());
+          }
+        }
+      }
+    }
+  }
+
+  const metadata = input.metadata;
+  if (metadata && typeof metadata === 'object') {
+    const toolCall = (metadata as Record<string, unknown>).toolCall;
+    if (toolCall && typeof toolCall === 'object') {
+      const name = (toolCall as Record<string, unknown>).name;
+      if (typeof name === 'string' && name.trim().length > 0 && !names.includes(name.trim())) {
+        names.push(name.trim());
+      }
+    }
+  }
+
+  return names.length > 0 ? names : undefined;
 }
 
 function serializeUsage(sessionId: string, metadata: unknown[]): unknown[] {
@@ -237,8 +290,7 @@ function serializeUsage(sessionId: string, metadata: unknown[]): unknown[] {
       cacheReadTokens: usage.cacheReadTokens,
       cacheWriteTokens: usage.cacheWriteTokens,
       reasoningTokens: usage.reasoningTokens,
-      totalTokens: usage.totalTokens,
-      raw: entry
+      totalTokens: usage.totalTokens
     };
   });
 }
@@ -339,7 +391,18 @@ function extractRole(input: Record<string, unknown>): string {
 }
 
 function extractModel(input: Record<string, unknown>): string | undefined {
-  return firstString(input.model, input.modelId, input.modelName);
+  const metadata = input.metadata && typeof input.metadata === 'object' ? input.metadata as Record<string, unknown> : undefined;
+  const modelUsage = metadata?.modelUsage && typeof metadata.modelUsage === 'object'
+    ? metadata.modelUsage as Record<string, unknown>
+    : undefined;
+  return preferredModel(
+    input.responseModel,
+    input.model,
+    input.modelId,
+    input.modelName,
+    metadata?.generatorModel,
+    modelUsage?.model
+  );
 }
 
 function extractTimestamp(input: unknown): number | undefined {
@@ -347,7 +410,16 @@ function extractTimestamp(input: unknown): number | undefined {
     return undefined;
   }
   const record = input as Record<string, unknown>;
-  for (const value of [record.timestamp, record.createdAt, record.lastModifiedTime]) {
+  const metadata = record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as Record<string, unknown>
+    : undefined;
+  for (const value of [
+    record.timestamp,
+    record.createdAt,
+    record.lastModifiedTime,
+    metadata?.createdAt,
+    metadata?.completedAt
+  ]) {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
     }
@@ -361,8 +433,70 @@ function extractTimestamp(input: unknown): number | undefined {
   return undefined;
 }
 
-function extractUsage(input: unknown) {
-  const result = {
+type ExtractedUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+};
+
+function extractUsageFromRecord(u: Record<string, unknown>): ExtractedUsage | null {
+  const inputTokens = toFiniteNumber(u.inputTokens) ?? toFiniteNumber(u.promptTokens);
+  const rawOutput = toFiniteNumber(u.outputTokens) ?? toFiniteNumber(u.completionTokens);
+  const responseOut = toFiniteNumber(u.responseOutputTokens);
+  const reasoningTokens = toFiniteNumber(u.thinkingOutputTokens) ?? toFiniteNumber(u.reasoningTokens) ?? 0;
+  const cacheReadTokens = toFiniteNumber(u.cacheReadTokens) ?? toFiniteNumber(u.cacheReadInputTokens) ?? 0;
+  const cacheWriteTokens = toFiniteNumber(u.cacheWriteTokens) ?? toFiniteNumber(u.cacheCreationInputTokens) ?? 0;
+  const reportedTotal = toFiniteNumber(u.totalTokens);
+
+  if (
+    inputTokens === undefined
+    && rawOutput === undefined
+    && responseOut === undefined
+    && reasoningTokens === 0
+    && cacheReadTokens === 0
+    && cacheWriteTokens === 0
+    && reportedTotal === undefined
+  ) {
+    return null;
+  }
+
+  let outputTokens = 0;
+  if (
+    responseOut !== undefined
+    && reasoningTokens > 0
+    && rawOutput !== undefined
+    && rawOutput === responseOut + reasoningTokens
+  ) {
+    outputTokens = responseOut;
+  } else if (rawOutput !== undefined && rawOutput > 0) {
+    outputTokens = rawOutput;
+  } else if (responseOut !== undefined) {
+    outputTokens = responseOut;
+  } else if (rawOutput !== undefined) {
+    outputTokens = rawOutput;
+  }
+
+  const resolvedInput = inputTokens ?? 0;
+  const totalTokens = Math.max(
+    reportedTotal ?? 0,
+    resolvedInput + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens
+  );
+
+  return {
+    inputTokens: resolvedInput,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+    totalTokens
+  };
+}
+
+function extractUsage(input: unknown): ExtractedUsage {
+  const empty: ExtractedUsage = {
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -371,6 +505,55 @@ function extractUsage(input: unknown) {
     totalTokens: 0
   };
 
+  if (!input || typeof input !== 'object') {
+    return empty;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  // 1. Canonical generatorMetadata shape: chatModel.usage (do NOT double-count retryInfos)
+  if (record.chatModel && typeof record.chatModel === 'object') {
+    const chatModel = record.chatModel as Record<string, unknown>;
+    if (chatModel.usage && typeof chatModel.usage === 'object') {
+      const parsed = extractUsageFromRecord(chatModel.usage as Record<string, unknown>);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    if (Array.isArray(chatModel.retryInfos) && chatModel.retryInfos.length > 0) {
+      const lastRetry = chatModel.retryInfos[chatModel.retryInfos.length - 1];
+      if (lastRetry && typeof lastRetry === 'object') {
+        const retryUsage = (lastRetry as Record<string, unknown>).usage;
+        if (retryUsage && typeof retryUsage === 'object') {
+          const parsed = extractUsageFromRecord(retryUsage as Record<string, unknown>);
+          if (parsed) {
+            return parsed;
+          }
+        }
+      }
+    }
+    return empty;
+  }
+
+  // 2. Canonical step shape: metadata.modelUsage
+  if (record.metadata && typeof record.metadata === 'object') {
+    const metadata = record.metadata as Record<string, unknown>;
+    if (metadata.modelUsage && typeof metadata.modelUsage === 'object') {
+      const parsed = extractUsageFromRecord(metadata.modelUsage as Record<string, unknown>);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  }
+
+  // 3. Direct canonical usage record
+  const directParsed = extractUsageFromRecord(record);
+  if (directParsed) {
+    return directParsed;
+  }
+
+  // 4. Fallback recursive walk (skipping known duplicate subtrees)
+  const result: ExtractedUsage = { ...empty };
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
       value.forEach(visit);
@@ -381,6 +564,9 @@ function extractUsage(input: unknown) {
     }
 
     for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
+      if (key === 'retryInfos' || key === 'chatStartMetadata') {
+        continue;
+      }
       const normalizedKey = key.toLowerCase();
       const numericValue = toFiniteNumber(rawValue);
       if (numericValue !== undefined) {

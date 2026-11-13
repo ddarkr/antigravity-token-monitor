@@ -1,4 +1,4 @@
-import * as https from 'https';
+import * as http from 'http';
 import { MonitorConfig } from '../config';
 import { ProcessLocator, RpcConnectionInfo } from './processLocator';
 
@@ -61,13 +61,20 @@ export class AntigravityRpcClient {
   }
 
   async getTrajectorySteps(sessionId: string): Promise<unknown[]> {
-    for (const connection of await this.getConnectionsForSession(sessionId)) {
+    const connections = await this.getConnectionsForSession(sessionId);
+    if (connections.length === 0) {
+      throw new Error('Antigravity internal RPC is unavailable.');
+    }
+
+    let lastError: unknown;
+    for (const connection of connections) {
       try {
         const result = await this.request('GetCascadeTrajectory', { cascadeId: sessionId }, connection);
         if (Array.isArray(result?.trajectory?.steps)) {
           return result.trajectory.steps;
         }
       } catch (error) {
+        lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         this.log?.(`AntigravityRpcClient: getTrajectorySteps failed for ${sessionId} on pid=${connection.pid}: ${message}`);
       }
@@ -81,29 +88,44 @@ export class AntigravityRpcClient {
         if (Array.isArray(fallback?.steps)) return fallback.steps;
         if (Array.isArray(fallback?.step)) return fallback.step;
       } catch (error) {
+        lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         this.log?.(`AntigravityRpcClient: getTrajectorySteps fallback failed for ${sessionId} on pid=${connection.pid}: ${message}`);
       }
     }
 
-    // Return empty array with explicit warning instead of silent data loss
+    if (lastError !== undefined) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
+
     this.log?.(`AntigravityRpcClient: getTrajectorySteps exhausted all connections for ${sessionId}`);
     return [];
   }
 
   async getTrajectoryMetadata(sessionId: string): Promise<unknown[]> {
-    for (const connection of await this.getConnectionsForSession(sessionId)) {
+    const connections = await this.getConnectionsForSession(sessionId);
+    if (connections.length === 0) {
+      throw new Error('Antigravity internal RPC is unavailable.');
+    }
+
+    let lastError: unknown;
+    for (const connection of connections) {
       try {
         const result = await this.request('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: sessionId }, connection);
-        if (Array.isArray(result.generatorMetadata)) {
+        if (Array.isArray(result?.generatorMetadata)) {
           this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata for ${sessionId} returned ${result.generatorMetadata.length} row(s).`);
           return result.generatorMetadata;
         }
         this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata for ${sessionId} returned non-array payload.`);
       } catch (error) {
+        lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         this.log?.(`AntigravityRpcClient: pid=${connection.pid} metadata fetch failed for ${sessionId}: ${message}`);
       }
+    }
+
+    if (lastError !== undefined) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
     }
 
     return [];
@@ -122,7 +144,7 @@ export class AntigravityRpcClient {
     const resolvedConnection = connection ?? await this.ensureConnection();
     const requestBody = JSON.stringify(body);
     return new Promise((resolve, reject) => {
-      const request = https.request({
+      const request = http.request({
         hostname: '127.0.0.1',
         port: resolvedConnection.port,
         path: `/exa.language_server_pb.LanguageServerService/${method}`,
@@ -133,7 +155,6 @@ export class AntigravityRpcClient {
           'Connect-Protocol-Version': '1',
           'X-Codeium-Csrf-Token': resolvedConnection.csrfToken
         },
-        rejectUnauthorized: false,
         timeout: this.config.rpcTimeoutMs
       }, (response) => {
         const chunks: Buffer[] = [];
@@ -174,12 +195,15 @@ export class AntigravityRpcClient {
   }
 
   private async ensureConnections(): Promise<RpcConnectionInfo[]> {
-    if (!this.connections) {
-      this.connections = await this.locator.detectConnections();
-      if (this.connections.length > 0) {
-        this.connectionInfo = this.connections[0];
-        this.log?.(`AntigravityRpcClient: connected to ${this.connections.length} RPC connection(s): ${this.connections.map((connection) => `pid=${connection.pid}:port=${connection.port}`).join(', ')}.`);
+    if (!this.connections || this.connections.length === 0) {
+      const detected = await this.locator.detectConnections();
+      if (detected.length > 0) {
+        this.connections = detected;
+        this.connectionInfo = detected[0];
+        this.log?.(`AntigravityRpcClient: connected to ${detected.length} RPC connection(s): ${detected.map((connection) => `pid=${connection.pid}:port=${connection.port}`).join(', ')}.`);
+        return detected;
       }
+      return [];
     }
 
     return this.connections;

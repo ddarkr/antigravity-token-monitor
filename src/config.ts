@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -6,6 +7,7 @@ export const EXTENSION_ID = 'antigravity-token-monitor';
 
 export type MonitorConfig = {
   sessionRoot: string;
+  sessionRoots: string[];
   debug: boolean;
   pollIntervalMs: number;
   historyLimit: number;
@@ -16,31 +18,43 @@ export type MonitorConfig = {
   rpcTimeoutMs: number;
 };
 
+export function getDefaultSessionRoots(): string[] {
+  return [getDefaultSessionRoot()];
+}
+
 export function getDefaultSessionRoot(): string {
   return path.join(os.homedir(), '.gemini', 'antigravity');
 }
 
 export function readConfig(): MonitorConfig {
   const config = vscode.workspace.getConfiguration(EXTENSION_ID);
-  const sessionRoot = config.get<string>('sessionRoot')?.trim() || getDefaultSessionRoot();
+  const userRoot = config.get<string>('sessionRoot')?.trim();
+  
+  let sessionRoot: string;
+  let sessionRoots: string[];
+
+  if (userRoot) {
+    sessionRoot = userRoot;
+    sessionRoots = [userRoot];
+  } else {
+    sessionRoots = getDefaultSessionRoots();
+    sessionRoot = sessionRoots[0];
+  }
 
   return {
     sessionRoot,
+    sessionRoots,
     debug: config.get<boolean>('debug', false),
     pollIntervalMs: validateTimeConfig('pollIntervalMs', config.get<number>('pollIntervalMs', 60000), 60000),
     historyLimit: config.get<number>('historyLimit', 120),
-    maxFileBytes: config.get<number>('maxFileBytes', 10 * 1024 * 1024),  // 10MB default to handle large usage.jsonl files
+    maxFileBytes: config.get<number>('maxFileBytes', 10 * 1024 * 1024),
     useRpcExport: config.get<boolean>('useRpcExport', true),
     exportStepsJsonl: config.get<boolean>('exportStepsJsonl', false),
     rpcExportIntervalMs: validateTimeConfig('rpcExportIntervalMs', config.get<number>('rpcExportIntervalMs', 300000), 300000),
-    rpcTimeoutMs: validateTimeConfig('rpcTimeoutMs', config.get<number>('rpcTimeoutMs', 5000), 5000)
+    rpcTimeoutMs: validateTimeConfig('rpcTimeoutMs', config.get<number>('rpcTimeoutMs', 15000), 15000)
   };
 }
 
-/**
- * Validates time-based configuration values (intervals and timeouts).
- * Clamps values to a safe range and warns on out-of-bounds input.
- */
 function validateTimeConfig(name: string, value: number, defaultValue: number): number {
   const MIN_MS = 1000;
   const MAX_MS = 600_000;

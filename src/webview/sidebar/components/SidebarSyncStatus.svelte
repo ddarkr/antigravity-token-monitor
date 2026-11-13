@@ -10,21 +10,21 @@
 </script>
 
 <section class="sync-status">
-  <h3 class="section-label">Status</h3>
+  <h3 class="section-label">运行状态</h3>
 
   <div class="status-rows">
     <div class="status-row">
       <span class="status-icon" class:running={state.syncStatus === 'running'} class:error={state.syncStatus === 'error'}>
         {syncIcon}
       </span>
-      <span class="status-text">Sync</span>
+      <span class="status-text">同步</span>
       <span class="status-detail">
         {#if state.syncStatus === 'running'}
-          Refreshing...
+          正在刷新...
         {:else if state.lastPollAt}
           {formatRelative(state.lastPollAt)}
         {:else}
-          Not started
+          未启动
         {/if}
       </span>
     </div>
@@ -34,14 +34,14 @@
         <span class="status-icon" class:running={state.exportStatus.status === 'running'} class:error={state.exportStatus.status === 'error'}>
           {exportIcon}
         </span>
-        <span class="status-text">Export</span>
+        <span class="status-text">导出</span>
         <span class="status-detail">
           {#if state.exportStatus.status === 'running'}
-            Exporting...
+            正在导出...
           {:else if state.exportStatus.lastExportAt}
             {formatRelative(state.exportStatus.lastExportAt)}
           {:else}
-            Idle
+            空闲
           {/if}
         </span>
       </div>

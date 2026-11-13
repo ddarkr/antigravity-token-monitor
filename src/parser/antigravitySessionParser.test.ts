@@ -108,4 +108,55 @@ describe('AntigravitySessionParser', () => {
     expect(result.totalTokens).toBe(10);
   });
 
+  it('does not double-count tokens when both usage.jsonl and redacted steps.jsonl have usage', async () => {
+    const sessionDir = await mkdtemp(path.join(tmpdir(), 'antigravity-parser-'));
+    const usagePath = path.join(sessionDir, 'usage.jsonl');
+    const stepsPath = path.join(sessionDir, 'steps.jsonl');
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      usagePath,
+      `${JSON.stringify({
+        recordType: 'usage',
+        model: 'gemini-3.8-flash-h',
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 10,
+        totalTokens: 130
+      })}\n`,
+      'utf8'
+    );
+    await writeFile(
+      stepsPath,
+      `${JSON.stringify({
+        recordType: 'step',
+        stepIndex: 0,
+        role: 'model',
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 10,
+        totalTokens: 130
+      })}\n`,
+      'utf8'
+    );
+
+    const parsePlan: SessionParsePlan = {
+      sessionId: 'session-dedup',
+      sessionDir,
+      labelHint: 'Session Dedup',
+      lastModifiedMs: Date.now(),
+      tokenFilePaths: [stepsPath, usagePath],
+      analysisSignature: 'sig-dedup',
+      source: 'rpc-artifact'
+    };
+
+    const result = await new AntigravitySessionParser(64).parse(parsePlan);
+
+    expect(result.mode).toBe('reported');
+    expect(result.inputTokens).toBe(100);
+    expect(result.outputTokens).toBe(20);
+    expect(result.reasoningTokens).toBe(10);
+    expect(result.totalTokens).toBe(130);
+    expect(result.messageCount).toBe(1);
+    expect(Object.keys(result.modelTotals ?? {})).toEqual(['gemini-3.8-flash-h']);
+  });
 });

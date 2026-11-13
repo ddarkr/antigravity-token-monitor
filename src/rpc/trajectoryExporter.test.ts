@@ -1,4 +1,4 @@
-import { mkdtemp } from 'fs/promises';
+import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -160,6 +160,143 @@ describe('TrajectoryExporter', () => {
     expect(failedManifest?.failureCount).toBe(1);
     expect(failedManifest?.lastError).toBe('session-1 failed second');
   });
+
+  it('does not double-count retryInfos or thinkingOutputTokens inside outputTokens', async () => {
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-exporter-'));
+    const artifactStore = new RpcArtifactStore(sessionRoot);
+
+    vi.spyOn(AntigravityRpcClient.prototype, 'flush').mockResolvedValue();
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'session-retry', lastModifiedMs: 123, stepCount: 1 }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectorySteps').mockResolvedValue([{ id: 'step-1' }]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectoryMetadata').mockResolvedValue([
+      {
+        chatModel: {
+          model: 'MODEL_PLACEHOLDER_M318',
+          responseModel: 'gemini-3.8-flash-h',
+          usage: {
+            inputTokens: '1000',
+            outputTokens: '300',
+            thinkingOutputTokens: '200',
+            responseOutputTokens: '100',
+            cacheReadTokens: '500'
+          },
+          retryInfos: [
+            {
+              usage: {
+                inputTokens: '1000',
+                outputTokens: '300',
+                thinkingOutputTokens: '200',
+                responseOutputTokens: '100',
+                cacheReadTokens: '500'
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    const result = await exporterFor(sessionRoot, artifactStore, []).exportChangedSessions([
+      buildCandidate(sessionRoot, 'session-retry', 123)
+    ]);
+    expect(result.exportedCount).toBe(1);
+
+    const tokenFiles = await artifactStore.getTokenFilePaths('session-retry');
+    const usageFile = tokenFiles.find((p) => p.endsWith('usage.jsonl'))!;
+    const usageRow = JSON.parse((await readFile(usageFile, 'utf8')).trim());
+    expect(usageRow.model).toBe('gemini-3.8-flash-h');
+    expect(usageRow.inputTokens).toBe(1000);
+    expect(usageRow.outputTokens).toBe(100);
+    expect(usageRow.reasoningTokens).toBe(200);
+    expect(usageRow.cacheReadTokens).toBe(500);
+    expect(usageRow.totalTokens).toBe(1800);
+    expect(usageRow.raw).toBeUndefined();
+  });
+
+  it('preserves existing valid artifacts when RPC returns empty payload on refresh', async () => {
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-exporter-'));
+    const artifactStore = new RpcArtifactStore(sessionRoot);
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(AntigravityRpcClient.prototype, 'flush').mockResolvedValue();
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'session-keep', lastModifiedMs: 100, stepCount: 2 }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectorySteps')
+      .mockResolvedValueOnce([{ id: 's1' }, { id: 's2' }])
+      .mockResolvedValue([]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectoryMetadata')
+      .mockResolvedValueOnce([{ chatModel: { responseModel: 'gemini-3.8-flash-h', usage: { inputTokens: 50, outputTokens: 10 } } }])
+      .mockResolvedValue([]);
+
+    await exporterFor(sessionRoot, artifactStore, []).exportChangedSessions([
+      buildCandidate(sessionRoot, 'session-keep', 100)
+    ]);
+
+    const usageBefore = await readFile((await artifactStore.getTokenFilePaths('session-keep')).find((p) => p.endsWith('usage.jsonl'))!, 'utf8');
+    expect(usageBefore.trim().length).toBeGreaterThan(0);
+
+    // Next cycle returns empty payload while serverLastModifiedMs moved
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'session-keep', lastModifiedMs: 200, stepCount: 2 }
+    ]);
+    const second = await exporterFor(sessionRoot, artifactStore, []).exportChangedSessions([
+      buildCandidate(sessionRoot, 'session-keep', 200)
+    ]);
+    expect(second.exportedCount).toBe(0);
+
+    const usageAfter = await readFile((await artifactStore.getTokenFilePaths('session-keep')).find((p) => p.endsWith('usage.jsonl'))!, 'utf8');
+    expect(usageAfter).toBe(usageBefore);
+    const manifest = await artifactStore.loadManifest('session-keep');
+    expect(manifest?.failureCount).toBe(1);
+  });
+
+  it('exports redacted stepType and toolNames without plaintext when exportStepsJsonl is false', async () => {
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-exporter-'));
+    const artifactStore = new RpcArtifactStore(sessionRoot);
+
+    vi.spyOn(AntigravityRpcClient.prototype, 'flush').mockResolvedValue();
+    vi.spyOn(AntigravityRpcClient.prototype, 'listTrajectories').mockResolvedValue([
+      { sessionId: 'session-steps-meta', lastModifiedMs: 500, stepCount: 2 }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectorySteps').mockResolvedValue([
+      {
+        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+        plannerResponse: {
+          response: 'secret conversation content',
+          toolCalls: [{ name: 'run_command', argumentsJson: '{"cmd":"secret"}' }]
+        },
+        metadata: {
+          modelUsage: { model: 'claude-sonnet-4-6', inputOutputTokens: { inputTokens: 100, outputTokens: 20 } }
+        }
+      },
+      {
+        type: 'CORTEX_STEP_TYPE_RUN_COMMAND',
+        metadata: { toolCall: { name: 'run_command' } }
+      }
+    ]);
+    vi.spyOn(AntigravityRpcClient.prototype, 'getTrajectoryMetadata').mockResolvedValue([]);
+
+    await exporterFor(sessionRoot, artifactStore, []).exportChangedSessions([
+      buildCandidate(sessionRoot, 'session-steps-meta', 500)
+    ]);
+
+    const tokenFiles = await artifactStore.getTokenFilePaths('session-steps-meta');
+    const stepsPath = tokenFiles.find((p) => p.endsWith('steps.jsonl'))!;
+    const rawSteps = await readFile(stepsPath, 'utf8');
+    expect(rawSteps).not.toContain('secret conversation content');
+    expect(rawSteps).not.toContain('argumentsJson');
+
+    const lines = rawSteps.trim().split('\n').map((line) => JSON.parse(line));
+    expect(lines[0].stepType).toBe('CORTEX_STEP_TYPE_PLANNER_RESPONSE');
+    expect(lines[0].toolNames).toEqual(['run_command']);
+    expect(lines[1].stepType).toBe('CORTEX_STEP_TYPE_RUN_COMMAND');
+    expect(lines[1].toolNames).toEqual(['run_command']);
+
+    const manifest = await artifactStore.loadManifest('session-steps-meta');
+    expect(manifest?.schemaVersion).toBe(2);
+  });
 });
 
 function exporterFor(sessionRoot: string, artifactStore: RpcArtifactStore, logs: string[]): TrajectoryExporter {
@@ -169,6 +306,7 @@ function exporterFor(sessionRoot: string, artifactStore: RpcArtifactStore, logs:
 function buildConfig(sessionRoot: string): MonitorConfig {
   return {
     sessionRoot,
+    sessionRoots: [sessionRoot],
     debug: false,
     pollIntervalMs: 60000,
     historyLimit: 120,

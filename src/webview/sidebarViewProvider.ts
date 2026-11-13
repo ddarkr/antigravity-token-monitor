@@ -14,7 +14,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly onRefresh: () => void,
-    private readonly onOpenDashboard: () => void
+    private readonly onOpenDashboard: (sessionId?: string) => void
   ) {}
 
   resolveWebviewView(
@@ -52,8 +52,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
       }
 
       if (message.type === 'sidebar/openSession') {
-        // Initial version: just open the full dashboard
-        this.onOpenDashboard();
+        this.onOpenDashboard(message.sessionId);
         return;
       }
     }, null, this.disposables);

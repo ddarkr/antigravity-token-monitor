@@ -44,7 +44,52 @@ export const mockDashboardState: DashboardState = {
         totalTokens: 15
       },
       recentTotals: [100, 120, 150],
-      snapshotCount: 3
+      snapshotCount: 3,
+      modelTotals: { 'mock-model': 200 },
+      modelBreakdowns: {
+        'mock-model': {
+          inputTokens: 100,
+          outputTokens: 50,
+          cacheReadTokens: 20,
+          cacheWriteTokens: 10,
+          reasoningTokens: 20,
+          totalTokens: 200
+        }
+      },
+      costUsd: 0.0041,
+      cacheSavedUsd: 0.0012,
+      cacheHitRate: 0.1667,
+      pricingStatus: 'priced',
+      modelCosts: {
+        'mock-model': {
+          costUsd: 0.0041,
+          cacheSavedUsd: 0.0012,
+          cacheHitRate: 0.1667,
+          pricingStatus: 'priced'
+        }
+      },
+      activityBreakdown: [
+        {
+          category: 'file_edit',
+          label: '代码编辑',
+          stepCount: 2,
+          callCount: 2,
+          totalTokens: 140,
+          costUsd: 0.0029,
+          tools: { replace_file_content: 2 },
+          modelTotals: { 'mock-model': 140 }
+        },
+        {
+          category: 'thinking_response',
+          label: '推理与回复',
+          stepCount: 1,
+          callCount: 0,
+          totalTokens: 60,
+          costUsd: 0.0012,
+          tools: {},
+          modelTotals: { 'mock-model': 60 }
+        }
+      ]
     },
     {
       sessionId: 'session-2',
@@ -89,6 +134,7 @@ export const mockDashboardState: DashboardState = {
   pricing: {
     status: 'partial',
     totalCostUsd: 0.0041,
+    totalCacheSavedUsd: 0.0012,
     pricedModelCount: 1,
     unpricedModelCount: 1,
     missingModels: ['unknown-model'],
@@ -124,6 +170,8 @@ export const mockDashboardState: DashboardState = {
         totalTokens: 450,
         sessionCount: 1,
         costUsd: 0.0041,
+        cacheSavedUsd: 0.0012,
+        cacheHitRate: 0.1667,
         pricingStatus: 'priced'
       },
       {

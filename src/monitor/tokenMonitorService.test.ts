@@ -6,6 +6,7 @@ import type * as vscode from 'vscode';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MonitorConfig } from '../config';
 import { AntigravitySessionParser } from '../parser/antigravitySessionParser';
+import { LiteLlmPricingCatalog } from '../pricing/litellmPricing';
 import { SnapshotStore } from '../storage/snapshotStore';
 import type { PersistedSessionState, SessionParsePlan, SessionScanCandidate, SessionScanResult, SessionTotals } from '../types';
 import { TokenMonitorService } from './tokenMonitorService';
@@ -198,19 +199,27 @@ function createService(options: {
 }): TokenMonitorService {
   const scanner = new StubSessionScanner(options.scannerResults);
   const parser = new StubParser(options.parseResults);
+  const pricingCatalog = new LiteLlmPricingCatalog(
+    async () => new Response(JSON.stringify({
+      'gemini-2.5-pro': { input_cost_per_token: 0.00000125, output_cost_per_token: 0.00001 }
+    }), { status: 200 }),
+    'https://example.test/pricing.json'
+  );
   return new TokenMonitorService(
     () => buildConfig(options.sessionRoot),
     scanner,
     () => parser,
     new SessionUsageCalculator(),
     options.store,
-    createOutputChannel()
+    createOutputChannel(),
+    pricingCatalog
   );
 }
 
 function buildConfig(sessionRoot: string): MonitorConfig {
   return {
     sessionRoot,
+    sessionRoots: [sessionRoot],
     debug: false,
     pollIntervalMs: 60_000,
     historyLimit: 120,

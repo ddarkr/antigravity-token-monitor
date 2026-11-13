@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { calculateModelCost, LiteLlmPricingCatalog, parseLiteLlmPriceMap } from './litellmPricing';
+import {
+  calculateCacheHitRate,
+  calculateModelCost,
+  LiteLlmPricingCatalog,
+  parseLiteLlmPriceMap,
+  parseModelsDevPriceMap
+} from './litellmPricing';
 
 describe('litellmPricing', () => {
   it('parses pricing payloads and skips sample_spec', () => {
@@ -112,5 +118,124 @@ describe('litellmPricing', () => {
 
     expect(catalog.resolveModelPricing('claude-opus-4-6-thinking')?.input_cost_per_token).toBe(0.000005);
     expect(catalog.resolveModelPricing('gpt-oss-120b-medium')?.input_cost_per_token).toBe(0.000003);
+  });
+
+  it('resolves gemini 3.8 quality suffix aliases (-n, -h, -m, -l, -q) and multi-provider argon trial', async () => {
+    const catalog = new LiteLlmPricingCatalog(async () => new Response(JSON.stringify({
+      'gemini-3.8-flash': { input_cost_per_token: 0.00000075 },
+      'gemini/gemini-4-argon': { input_cost_per_token: 0.000002 },
+      'vertex_ai/gemini-4-argon': { input_cost_per_token: 0.000002 },
+      'perplexity/google/gemini-4-argon': { input_cost_per_token: 0.000009 }
+    }), { status: 200 }), 'https://example.test/pricing.json');
+
+    await catalog.getSnapshot();
+
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-n')?.input_cost_per_token).toBe(0.00000075);
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-h')?.input_cost_per_token).toBe(0.00000075);
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-q')?.input_cost_per_token).toBe(0.00000075);
+    expect(catalog.resolveModelPricing('gemini-4-argon-trial')?.input_cost_per_token).toBe(0.000002);
+  });
+
+  it('parses models.dev per-1M payloads into per-token pricing', () => {
+    const parsed = parseModelsDevPriceMap({
+      google: {
+        models: {
+          'gemini-4-argon': {
+            cost: { input: 2, output: 10, cache_read: 0.1 }
+          },
+          'no-cost': {}
+        }
+      },
+      nearai: {
+        models: {
+          'google/gemini-3.8-flash': {
+            cost: { input: 0.75, output: 3.75 }
+          }
+        }
+      }
+    });
+
+    expect(parsed['google/gemini-4-argon']).toEqual({
+      input_cost_per_token: 0.000002,
+      output_cost_per_token: 0.00001,
+      cache_read_input_token_cost: 0.0000001,
+      cache_creation_input_token_cost: undefined,
+      output_cost_per_reasoning_token: undefined
+    });
+    expect(parsed['nearai/google/gemini-3.8-flash']?.input_cost_per_token).toBe(0.00000075);
+    expect(parsed['google/no-cost']).toBeUndefined();
+  });
+
+  it('merges models.dev and LiteLLM sources with graceful fallback when one fails', async () => {
+    const fetchImpl: typeof fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('models.dev')) {
+        return new Response(JSON.stringify({
+          google: {
+            models: {
+              'gemini-4-argon': { cost: { input: 2, output: 10, cache_read: 0.1 } }
+            }
+          }
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        'gemini-3.8-flash': { input_cost_per_token: 0.00000075, output_cost_per_token: 0.00000375 }
+      }), { status: 200 });
+    });
+
+    const catalog = new LiteLlmPricingCatalog(fetchImpl);
+    await catalog.getSnapshot();
+
+    expect(catalog.resolveModelPricing('gemini-4-argon-trial')?.input_cost_per_token).toBe(0.000002);
+    expect(catalog.resolveModelPricing('gemini-3.8-flash-q')?.input_cost_per_token).toBe(0.00000075);
+
+    const partialFailFetch: typeof fetch = vi.fn(async (input) => {
+      if (String(input).includes('models.dev')) {
+        return new Response('unavailable', { status: 503 });
+      }
+      return new Response(JSON.stringify({
+        'gemini/gemini-4-argon': { input_cost_per_token: 0.000002 }
+      }), { status: 200 });
+    });
+
+    const fallbackCatalog = new LiteLlmPricingCatalog(partialFailFetch);
+    await fallbackCatalog.getSnapshot();
+    expect(fallbackCatalog.resolveModelPricing('gemini-4-argon-trial')?.input_cost_per_token).toBe(0.000002);
+  });
+
+  it('calculates cache hit rate and cache savings only when cache discount is present', () => {
+    expect(calculateCacheHitRate(300, 100)).toBeCloseTo(0.75);
+    expect(calculateCacheHitRate(0, 0)).toBeUndefined();
+
+    const discounted = calculateModelCost({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 450
+    }, {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00003,
+      cache_read_input_token_cost: 0.000001
+    }, 'No match');
+
+    expect(discounted.cacheHitRate).toBeCloseTo(0.75);
+    expect(discounted.cacheSavedUsd).toBeCloseTo(0.0027);
+
+    const noDiscount = calculateModelCost({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 450
+    }, {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00003
+    }, 'No match');
+
+    expect(noDiscount.cacheHitRate).toBeCloseTo(0.75);
+    expect(noDiscount.cacheSavedUsd).toBe(0);
   });
 });

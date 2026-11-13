@@ -9,28 +9,31 @@
 <section class="kpi-section">
   <div class="kpi-card primary">
     <div class="kpi-value highlight">{formatCompact(summary.totalTokens)}</div>
-    <div class="kpi-label">Total Tokens</div>
+    <div class="kpi-label">Token 总数</div>
   </div>
 
   <div class="kpi-row">
     <div class="kpi-card">
       <div class="kpi-value">{summary.activeSessionCount}</div>
-      <div class="kpi-label">Active</div>
+      <div class="kpi-label">活跃会话</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-value">{summary.messageCount}</div>
-      <div class="kpi-label">Messages</div>
+      <div class="kpi-label">消息数</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '—'}</div>
-      <div class="kpi-label">Cost</div>
+      <div class="kpi-label">预估费用</div>
     </div>
   </div>
 
   <div class="kpi-meta">
-    {summary.sessionCount} sessions ({summary.archivedSessionCount} archived)
+    共 {summary.sessionCount} 个会话 ({summary.archivedSessionCount} 个已归档)
+    {#if pricing.totalCacheSavedUsd !== undefined && pricing.totalCacheSavedUsd > 0}
+      • 缓存省 {formatUsd(pricing.totalCacheSavedUsd)}
+    {/if}
     {#if summary.estimatedSessionCount > 0}
-      • {summary.estimatedSessionCount} estimated
+      • {summary.estimatedSessionCount} 个估算
     {/if}
   </div>
 </section>
@@ -42,7 +45,7 @@
     gap: var(--spacing-sm);
   }
   .kpi-card {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: var(--spacing-sm) var(--spacing-md);
@@ -52,8 +55,8 @@
     flex: 1;
   }
   .kpi-card.primary {
-    background: linear-gradient(135deg, rgba(136, 216, 176, 0.06), rgba(199, 242, 150, 0.04));
-    border-color: rgba(136, 216, 176, 0.2);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
     padding: var(--spacing-md);
     text-align: center;
     position: relative;
@@ -80,9 +83,8 @@
   }
   .kpi-value.highlight {
     font-size: 28px;
-    font-weight: 400;
-    color: var(--accent-strong);
-    text-shadow: 0 0 20px rgba(199, 242, 150, 0.15);
+    font-weight: 500;
+    color: var(--accent);
   }
   .kpi-label {
     font-size: 10px;

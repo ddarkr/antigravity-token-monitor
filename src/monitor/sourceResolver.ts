@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { RpcArtifactManifest, SessionParsePlan, SessionScanCandidate } from '../types';
 import { RpcArtifactStore } from '../storage/rpcArtifactStore';
 
-const ANALYSIS_SIGNATURE_VERSION = 'analysis-v4-canonical-usage-records';
+const ANALYSIS_SIGNATURE_VERSION = 'analysis-v5-canonical-deduped';
 
 export async function resolveParsePlan(
   candidate: SessionScanCandidate,

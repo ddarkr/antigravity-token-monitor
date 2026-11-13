@@ -16,18 +16,16 @@ export function buildTokenStatusBarPresentation(state: DashboardState): TokenSta
       : '$(graph)';
   const totalTokensCompact = formatNumberCompact(state.summary.totalTokens);
   const totalTokensFull = formatNumber(state.summary.totalTokens);
-  const sessionLabel = state.summary.sessionCount === 1 ? 'session' : 'sessions';
-  const changedLabel = state.summary.changedSessionCount === 1 ? 'changed session' : 'changed sessions';
   const tooltipLines = [
-    `Total tokens: ${totalTokensFull}`,
-    `Sessions: ${formatNumber(state.summary.sessionCount)} ${sessionLabel}`,
-    `Recent activity: ${formatNumber(state.summary.changedSessionCount)} ${changedLabel}`,
-    `Sync: ${state.syncMessage || state.exportStatus.message || 'Idle.'}`,
-    'Click to open dashboard'
+    `Token 总计: ${totalTokensFull}`,
+    `会话总数: ${formatNumber(state.summary.sessionCount)} 个会话`,
+    `最近变动: ${formatNumber(state.summary.changedSessionCount)} 个活跃会话`,
+    `同步状态: ${state.syncMessage || state.exportStatus.message || '空闲'}`,
+    '点击打开完整仪表盘'
   ];
 
   return {
-    text: `${icon} ${totalTokensCompact} tokens 🔥`,
+    text: `${icon} ${totalTokensCompact} Tokens 🔥`,
     tooltip: tooltipLines.join('\n'),
     isError
   };

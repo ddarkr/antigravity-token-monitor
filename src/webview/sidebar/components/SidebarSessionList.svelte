@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DashboardSession } from '../../../types';
-  import { formatCompact, formatRelative } from '../../lib/formatters';
+  import { formatCompact, formatRelative, formatUsd } from '../../lib/formatters';
 
   export let sessions: DashboardSession[];
   export let onOpenSession: (sessionId: string) => void;
@@ -20,8 +20,8 @@
 
 <section class="session-list">
   <div class="section-header">
-    <h3 class="section-label">Sessions</h3>
-    <span class="session-count">{activeSessions.length} active</span>
+    <h3 class="section-label">会话明细</h3>
+    <span class="session-count">{activeSessions.length} 活跃</span>
   </div>
 
   {#if visibleActive.length > 0}
@@ -30,7 +30,7 @@
         <button
           class="session-item"
           on:click={() => onOpenSession(session.sessionId)}
-          title="Open in dashboard"
+          title="在仪表盘中打开"
         >
           <div class="session-row">
             <span class="session-name">{session.label}</span>
@@ -39,7 +39,11 @@
           <div class="session-meta">
             <span>{formatRelative(session.lastModifiedMs)}</span>
             <span>•</span>
-            <span>{session.messageCount} msg</span>
+            <span>{session.messageCount} 条消息</span>
+            {#if session.costUsd !== undefined}
+              <span>•</span>
+              <span>{formatUsd(session.costUsd)}</span>
+            {/if}
             {#if session.latestDelta.totalTokens > 0}
               <span class="delta">+{formatCompact(session.latestDelta.totalTokens)}</span>
             {/if}
@@ -57,24 +61,24 @@
 
     {#if !expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        Show {hiddenActiveCount} more
+        展开更多 ({hiddenActiveCount})
       </button>
     {:else if expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        Show less
+        收起
       </button>
     {/if}
 
     {#if expanded && archivedSessions.length > 0}
       <div class="archived-divider">
-        <span>{archivedSessions.length} archived</span>
+        <span>{archivedSessions.length} 个已归档</span>
       </div>
       <div class="sessions">
         {#each archivedSessions as session (session.sessionId)}
           <button
             class="session-item archived"
             on:click={() => onOpenSession(session.sessionId)}
-            title="Open in dashboard"
+            title="在仪表盘中打开"
           >
             <div class="session-row">
               <span class="session-name">{session.label}</span>
@@ -88,7 +92,7 @@
       </div>
     {/if}
   {:else}
-    <div class="empty">No active sessions found.</div>
+    <div class="empty">暂无活跃会话。</div>
   {/if}
 </section>
 
@@ -126,7 +130,7 @@
     flex-direction: column;
     gap: 2px;
     padding: var(--spacing-sm);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle);
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -136,7 +140,7 @@
     transition: background 120ms, border-color 120ms;
   }
   .session-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-hover);
     border-color: var(--line);
   }
   .session-item.archived {
@@ -173,13 +177,13 @@
     align-items: baseline;
   }
   .delta {
-    color: var(--accent-strong);
+    color: var(--accent);
     font-family: var(--code-font);
     font-weight: 500;
   }
   .session-bar-track {
     height: 2px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-muted);
     border-radius: 1px;
     overflow: hidden;
     margin-top: 1px;

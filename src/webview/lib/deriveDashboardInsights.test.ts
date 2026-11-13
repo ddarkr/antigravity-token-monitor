@@ -25,4 +25,18 @@ describe('deriveDashboardInsights', () => {
     expect(insights.hasSessions).toBe(false);
     expect(insights.sortedSessions.length).toBe(0);
   });
+
+  it('recomputes cache savings and hit rates when filtering by custom date range', () => {
+    const insights = deriveDashboardInsights(mockDashboardState, {
+      range: 'custom',
+      customStart: '2020-09-13',
+      customEnd: '2020-09-14'
+    });
+
+    const mockModel = insights.analytics.modelUsage.find((m) => m.model === 'mock-model');
+    expect(mockModel?.totalTokens).toBe(200);
+    expect(mockModel?.cacheHitRate).toBeCloseTo(20 / 120);
+    expect(mockModel?.cacheSavedUsd).toBeCloseTo(0.0012 * (200 / 450));
+    expect(insights.pricing.totalCacheSavedUsd).toBeCloseTo(0.0012 * (200 / 450));
+  });
 });

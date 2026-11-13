@@ -31,7 +31,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sidebarProvider = new SidebarViewProvider(
     context.extensionUri,
     () => { void service.exportNow({ force: false, refreshAfter: true }); },
-    () => { void vscode.commands.executeCommand(`${EXTENSION_ID}.openDashboard`); }
+    (sessionId?: string) => { void vscode.commands.executeCommand(`${EXTENSION_ID}.openDashboard`, sessionId); }
   );
 
   context.subscriptions.push(service, panel, statusBar, sidebarProvider, outputChannel);
@@ -48,10 +48,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sidebarProvider.update(state);
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.openDashboard`, async () => {
+  context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.openDashboard`, async (sessionId?: string) => {
     panel.show(service.getDashboardState());
+    if (sessionId) {
+      panel.selectSession(sessionId);
+    }
     await service.exportNow({ force: false, refreshAfter: true });
     panel.show(service.getDashboardState());
+    if (sessionId) {
+      panel.selectSession(sessionId);
+    }
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.refreshNow`, async () => {
@@ -62,16 +68,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.exportNow`, async () => {
     const exportedCount = await service.exportNow({ force: true, refreshAfter: true });
     panel.show(service.getDashboardState());
-    void vscode.window.showInformationMessage(`Antigravity Token Monitor exported ${exportedCount} session${exportedCount === 1 ? '' : 's'}.`);
+    void vscode.window.showInformationMessage(`Antigravity Token 监控已成功导出 ${exportedCount} 个会话分析数据。`);
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand(`${EXTENSION_ID}.resetCache`, async () => {
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await vscode.window.showWarningMessage<string>(
       'Antigravity Token Monitor: This deletes all cached data and reprocesses everything from scratch. Do you want to continue?',
       { modal: true },
       'Reset Cache'
     );
-    if (confirm !== 'Reset Cache') {
+    if (confirm !== '重置缓存') {
       return;
     }
 
@@ -79,11 +85,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const clearedCount = await service.resetCache();
       panel.show(service.getDashboardState());
       void vscode.window.showInformationMessage(
-        `Reset cache complete: cleared ${clearedCount} session cache${clearedCount === 1 ? '' : 's'} and started reprocessing.`
+        `重置缓存完成：已清理 ${clearedCount} 个会话缓存，正在重新解析。`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      void vscode.window.showErrorMessage(`Reset cache failed: ${message}`);
+      void vscode.window.showErrorMessage(`重置缓存失败: ${message}`);
     }
   }));
 

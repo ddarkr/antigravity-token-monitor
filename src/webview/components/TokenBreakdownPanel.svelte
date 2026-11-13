@@ -1,18 +1,22 @@
 <script lang="ts">
   import type { TokenBreakdown } from '../../types';
-  import { formatNumber } from '../lib/formatters';
+  import { formatNumber, formatPercent, formatUsd } from '../lib/formatters';
 
   export let breakdown: TokenBreakdown;
+  export let cacheSavedUsd: number | undefined = undefined;
 
   $: cacheTokens = breakdown.cacheReadTokens + breakdown.cacheWriteTokens;
   $: categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + cacheTokens + breakdown.reasoningTokens;
   $: total = Math.max(categorizedTotal, 1);
+  $: cacheHitRate = (breakdown.inputTokens + breakdown.cacheReadTokens) > 0
+    ? breakdown.cacheReadTokens / (breakdown.inputTokens + breakdown.cacheReadTokens)
+    : undefined;
 
   $: items = [
-    { key: 'input', label: 'Input', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
-    { key: 'output', label: 'Output', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
-    { key: 'cache', label: 'Cache', tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
-    { key: 'reasoning', label: 'Reasoning', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
+    { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: '#3b82f6' },
+    { key: 'output', label: '输出 (Output)', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: '#10b981' },
+    { key: 'cache', label: '缓存 (Cache)', tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: '#8b5cf6' },
+    { key: 'reasoning', label: '思考推理 (Reasoning)', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: '#f59e0b' }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
@@ -20,34 +24,40 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token Breakdown</h2>
-    <div class="card-meta">Proportional shares</div>
+    <h2 class="section-title">Token 构成占比</h2>
+    <div class="card-meta">各类型 Token 比例分布</div>
   </div>
 
   <div class="card-body">
     <div class="total-display">
       <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
-      <span class="total-label">Total Tokens</span>
+      <span class="total-label">Token 总数</span>
     </div>
 
     <div class="coverage-copy">
-      <span>{formatNumber(categorizedTotal)} categorized</span>
+      <span>已分类 {formatNumber(categorizedTotal)} Tokens</span>
       {#if breakdown.totalTokens !== categorizedTotal}
-        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} of total classified</span>
+        <span>• 占已知分类的 {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)}</span>
+      {/if}
+      {#if cacheHitRate !== undefined}
+        <span>• 缓存命中率 {formatPercent(cacheHitRate)}</span>
+      {/if}
+      {#if cacheSavedUsd !== undefined && cacheSavedUsd > 0}
+        <span>• 节省 {formatUsd(cacheSavedUsd)}</span>
       {/if}
     </div>
 
     <div class="stacked-bar">
       {#each items as item}
         {#if item.tokens > 0}
-          <div class="segment {item.key}" style="width: {item.pct}%" title="{item.label}: {formatNumber(item.tokens)}"></div>
+          <div class="segment {item.key}" style="width: {item.pct}%" title="{item.label}: {formatNumber(item.tokens)} ({formatPct(item.pct)})"></div>
         {/if}
       {/each}
     </div>
 
     <div class="legend">
       {#each items as item}
-        <div class="legend-item">
+        <div class="legend-item {item.key}">
           <div class="legend-color {item.key}"></div>
           <div class="legend-info">
             <span class="legend-label">{item.label}</span>
@@ -61,37 +71,39 @@
 
 <style>
   .analytical-card {
-    background: var(--canvas-bg);
-    display: flex;
-    flex-direction: column;
-  }
-  .card-header {
-    padding: 0 0 var(--spacing-md) 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  .section-title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    font-family: var(--font-display);
-    letter-spacing: -0.01em;
-  }
-  .card-meta {
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .card-body {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    overflow: hidden;
     box-shadow: var(--shadow-elevated);
+  }
+  .card-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface-subtle);
+  }
+  .section-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card-meta {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .card-body {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
   }
   .total-display {
     display: flex;
@@ -99,15 +111,15 @@
     align-items: flex-start;
   }
   .total-number {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 300;
     color: var(--text);
-    line-height: 1;
+    line-height: 1.1;
     font-family: var(--code-font);
     letter-spacing: -0.02em;
   }
   .total-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -116,17 +128,17 @@
   }
   .coverage-copy {
     display: flex;
-    gap: var(--spacing-sm);
+    gap: 6px;
     flex-wrap: wrap;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 11px;
   }
   .stacked-bar {
     display: flex;
-    height: 32px;
-    border-radius: 16px;
+    height: 22px;
+    border-radius: 11px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted);
     width: 100%;
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
@@ -137,25 +149,40 @@
   .segment:not(:last-child) {
     border-right: 2px solid var(--panel);
   }
-  .input { background: var(--accent); }
-  .output { background: var(--accent-strong); }
-  .reasoning { background: var(--warm); }
-  .cache { background: #73b8ff; }
+
+  /* 4 HIGH-CONTRAST DISTINCT THEME COLORS */
+  /* Input: Vibrant Tech Blue */
+  .segment.input { background: #3b82f6; }
+  /* Output: Luminous Emerald Green */
+  .segment.output { background: #10b981; }
+  /* Cache: Electric Purple / Violet */
+  .segment.cache { background: #8b5cf6; }
+  /* Reasoning: Radiant Amber Gold */
+  .segment.reasoning { background: #f59e0b; }
 
   .legend {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: var(--spacing-sm);
   }
   .legend-item {
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm);
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: 8px;
+    background: var(--surface-subtle);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--surface-line);
+    transition: background 0.15s, border-color 0.15s;
   }
+  .legend-item:hover {
+    background: var(--surface-hover);
+  }
+  .legend-item.input:hover { border-color: rgba(59, 130, 246, 0.4); }
+  .legend-item.output:hover { border-color: rgba(16, 185, 129, 0.4); }
+  .legend-item.cache:hover { border-color: rgba(139, 92, 246, 0.4); }
+  .legend-item.reasoning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
   .legend-color {
     width: 14px;
     height: 14px;
@@ -163,6 +190,11 @@
     margin-top: 2px;
     flex-shrink: 0;
   }
+  .legend-color.input { background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+  .legend-color.output { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+  .legend-color.cache { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.5); }
+  .legend-color.reasoning { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+
   .legend-info {
     display: flex;
     flex-direction: column;
@@ -177,7 +209,7 @@
   }
   .legend-value {
     font-size: 14px;
-    font-weight: 400;
+    font-weight: 500;
     color: var(--text);
     font-family: var(--code-font);
   }
